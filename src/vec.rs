@@ -15,8 +15,14 @@ use std::fmt::Display;
 pub struct Point3(f64, f64, f64);
 
 impl Point3 {
+    #[inline]
     pub fn at(x: f64, y: f64, z: f64) -> Self {
         Point3(x, y, z)
+    }
+
+    #[inline]
+    pub fn origin_vec(self) -> Vec3 {
+        Vec3::new(self.0, self.1, self.2)
     }
 
     #[inline]
@@ -48,6 +54,26 @@ impl Display for Vec3 {
 }
 
 impl Vec3 {
+    #[inline]
+    pub fn new(x: f64, y: f64, z: f64) -> Self {
+        Vec3(x, y, z)
+    }
+
+    #[inline]
+    pub fn ihat() -> Self {
+        Vec3::new(1.0, 0.0, 0.0)
+    }
+
+    #[inline]
+    pub fn jhat() -> Self {
+        Vec3::new(0.0, 1.0, 0.0)
+    }
+
+    #[inline]
+    pub fn zhat() -> Self {
+        Vec3::new(0.0, 0.0, 1.0)
+    }
+
     #[inline]
     pub fn x(&self) -> f64 { self.0 }
     #[inline]

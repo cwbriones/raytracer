@@ -32,32 +32,99 @@ impl Color {
     }
 }
 
-fn hit_sphere(center: Point3, radius: f64, ray: &Ray) -> f64 {
-    let oc = ray.origin() - center;
-    let a = ray.dir().square_length();
-    let half_b = oc.dot(&ray.dir());
-    let c = oc.square_length() - radius * radius;
-    let discriminant = half_b * half_b - a * c;
-    if discriminant < 0.0 {
-        // Does not hit the sphere.
-        -1.0
-    } else {
-        // The point of intersection.
-        (-half_b - discriminant.sqrt()) / a
+#[derive(Default, Clone, Copy)]
+struct HitRecord {
+    pub point: Point3,
+    pub normal: Vec3,
+    pub t: f64,
+    pub front_face: bool,
+}
+
+impl HitRecord {
+    #[inline]
+    pub fn set_face_normal(&mut self, ray: &Ray, outward_normal: Vec3) {
+        self.front_face = ray.dir().dot(&outward_normal) < 0.0;
+        self.normal = if self.front_face { outward_normal } else { outward_normal.negate() };
     }
 }
 
-fn ray_color(ray: &Ray) -> Color {
-    let mut t = hit_sphere(Point3::at(0.0, 0.0, -1.0), 0.5, ray);
-    if t > 0.0 {
-        let n = (ray.at(t) - Vec3::new(0.0, 0.0, -1.0)).origin_vec().unit();
-        debug_assert!(n.length() == 1.0);
-        // Each n_i is in [-1, 1] which means that n_i + 1 is in [0, 2].
-        return Color::new((n.x() + 1.0) / 2.0, (n.y() + 1.0) / 2.0, (n.z() + 1.0) / 2.0);
+trait Hittable {
+    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64, rec: &mut HitRecord) -> bool;
+}
+
+// FIXME: This should take an IntoIterator that turns into references of Hittables
+fn hit_vec(items: &[Box<dyn Hittable>], ray: &Ray, t_min: f64, t_max: f64, rec: &mut HitRecord) -> bool {
+        let mut hit_anything = false;
+        let mut closest = t_max;
+
+        for h in items {
+            let mut temp_rec = Default::default();
+            if h.hit(ray, t_min, t_max, &mut temp_rec) {
+                hit_anything = true;
+                closest = temp_rec.t;
+                *rec = temp_rec;
+            }
+        }
+        return hit_anything;
+}
+
+struct Sphere {
+    center: Point3,
+    radius: f64,
+}
+
+impl Sphere {
+    fn new(center: Point3, radius: f64) -> Self {
+        Sphere { center, radius }
     }
-    let unit_dir = ray.dir().unit();
-    t = 0.5 * (unit_dir.y() + 1.0);
-    return Color::new(1.0, 1.0, 1.0).lerp(Color::new(0.5, 0.7, 1.0), t)
+}
+
+impl Hittable for Sphere {
+    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64, rec: &mut HitRecord) -> bool {
+        let oc = ray.origin() - self.center;
+        let a = ray.dir().square_length();
+        let half_b = oc.dot(&ray.dir());
+        let c = oc.square_length() - self.radius * self.radius;
+        let discriminant = half_b * half_b - a * c;
+
+        if discriminant > 0.0 {
+            // The point of intersection.
+            let root = discriminant.sqrt();
+            let temp = (-half_b - root) / a;
+            if t_min < temp && temp < t_max {
+                // First root
+                rec.t = temp;
+                rec.point = ray.at(rec.t);
+                let outward_normal = (rec.point - self.center) / self.radius;
+                rec.set_face_normal(ray, outward_normal);
+                return true;
+            }
+            let temp = (-half_b + root) / a;
+            if t_min < temp && temp < t_max {
+                // Second root
+                rec.t = temp;
+                rec.point = ray.at(rec.t);
+                let outward_normal = (rec.point - self.center) / self.radius;
+                rec.set_face_normal(ray, outward_normal);
+                return true;
+            }
+        }
+        // Does not hit the sphere.
+        return false;
+    }
+}
+
+fn ray_color(ray: &Ray, world: &[Box<dyn Hittable>]) -> Color {
+    let mut hit_record = HitRecord::default();
+
+    if hit_vec(world, ray, 0.0, ::std::f64::INFINITY, &mut hit_record) {
+        let n = hit_record.normal;
+        Color::new((n.x() + 1.0) / 2.0, (n.y() + 1.0) / 2.0, (n.z() + 1.0) / 2.0)
+    } else {
+        let unit_dir = ray.dir().unit();
+        let t = 0.5 * (unit_dir.y() + 1.0);
+        Color::new(1.0, 1.0, 1.0).lerp(Color::new(0.5, 0.7, 1.0), t)
+    }
 }
 
 fn main() {
@@ -69,6 +136,11 @@ fn main() {
     let horizontal = Vec3::new(4.0, 0.0, 0.0);
     let vertical = Vec3::new(0.0, 2.25, 0.0);
     let lower_left_corner = origin - horizontal / 2.0 - vertical / 2.0 - Vec3::zhat();
+
+    let world: Vec<Box<dyn Hittable>> = vec![
+        Box::new(Sphere::new(Point3::at(0.0, -100.5, -1.0), 100.0)),
+        Box::new(Sphere::new(Point3::at(0.0, 0.0, -1.0), 0.5)),
+    ];
 
     println!("P3 {} {}", IMAGE_WIDTH, IMAGE_HEIGHT);
     println!("255");
@@ -83,7 +155,7 @@ fn main() {
             let v = j as f64 / (IMAGE_HEIGHT - 1) as f64;
             let dir = (lower_left_corner + u * horizontal + v * vertical).origin_vec();
             let ray = Ray::new(origin, dir);
-            ray_color(&ray)
+            ray_color(&ray, &world.as_slice())
         })
         .for_each(|c| c.write());
     eprintln!("\nDone.");

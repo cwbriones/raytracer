@@ -8,15 +8,38 @@ use std::ops::DivAssign;
 
 use std::fmt::Display;
 
-#[derive(Debug, Clone, Copy)]
-pub struct Vec3(pub f64, pub f64, pub f64);
+// TODO: This can probably be made simpler using a phantom type to distinguish absolute
+// vs relative coordinates.
 
-// TODO: Point + Vec = Point
-//       Point - Point = Vec
-//
-//       Illegal:
-//       Point + Point
-pub type Point3 = Vec3;
+#[derive(Debug, Clone, Copy)]
+pub struct Point3(f64, f64, f64);
+
+impl Point3 {
+    pub fn at(x: f64, y: f64, z: f64) -> Self {
+        Point3(x, y, z)
+    }
+
+    #[inline]
+    pub fn x(&self) -> f64 { self.0 }
+    #[inline]
+    pub fn y(&self) -> f64 { self.1 }
+    #[inline]
+    pub fn z(&self) -> f64 { self.2 }
+}
+
+impl Default for Point3 {
+    fn default() -> Self {
+        Point3(0.0, 0.0, 0.0)
+    }
+}
+
+impl Display for Point3 {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(f, "({}, {}, {})", self.0, self.1, self.2)
+    }
+}
+#[derive(Debug, Clone, Copy)]
+pub struct Vec3(f64, f64, f64);
 
 impl Display for Vec3 {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
@@ -25,6 +48,13 @@ impl Display for Vec3 {
 }
 
 impl Vec3 {
+    #[inline]
+    pub fn x(&self) -> f64 { self.0 }
+    #[inline]
+    pub fn y(&self) -> f64 { self.1 }
+    #[inline]
+    pub fn z(&self) -> f64 { self.2 }
+
     #[inline]
     pub fn negate(&self) -> Self {
         Vec3(-self.0, -self.1, -self.2)
@@ -63,6 +93,53 @@ impl Vec3 {
 impl Default for Vec3 {
     fn default() -> Self {
         Vec3(0.0, 0.0, 0.0)
+    }
+}
+
+impl Add<Vec3> for Point3 {
+    type Output = Self;
+
+    #[inline]
+    fn add(self, other: Vec3) -> Self {
+        Point3(
+            self.0 + other.0,
+            self.1 + other.1,
+            self.2 + other.2
+        )
+    }
+}
+
+impl AddAssign<Vec3> for Point3 {
+    fn add_assign(&mut self, other: Vec3) {
+        self.0 += other.0;
+        self.1 += other.1;
+        self.2 += other.2;
+    }
+}
+
+impl Sub for Point3 {
+    type Output = Vec3;
+
+    #[inline]
+    fn sub(self, other: Self) -> Vec3 {
+        Vec3(
+            self.0 - other.0,
+            self.1 - other.1,
+            self.2 - other.2
+        )
+    }
+}
+
+impl Sub<Vec3> for Point3 {
+    type Output = Point3;
+
+    #[inline]
+    fn sub(self, other: Vec3) -> Point3 {
+        Point3(
+            self.0 - other.0,
+            self.1 - other.1,
+            self.2 - other.2
+        )
     }
 }
 

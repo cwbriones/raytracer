@@ -2,8 +2,8 @@ mod vec;
 mod ray;
 
 pub struct Color {
-    r: f64, 
-    g: f64, 
+    r: f64,
+    g: f64,
     b: f64,
 }
 

@@ -1,8 +1,6 @@
 mod vec;
 mod ray;
 
-use std::ops::Mul;
-
 use vec::{Point3, Vec3};
 use ray::Ray;
 
@@ -34,15 +32,37 @@ impl Color {
     }
 }
 
+fn hit_sphere(center: Point3, radius: f64, ray: &Ray) -> f64 {
+    let oc = ray.origin() - center;
+    let a = ray.dir().square_length();
+    let half_b = oc.dot(&ray.dir());
+    let c = oc.square_length() - radius * radius;
+    let discriminant = half_b * half_b - a * c;
+    if discriminant < 0.0 {
+        // Does not hit the sphere.
+        -1.0
+    } else {
+        // The point of intersection.
+        (-half_b - discriminant.sqrt()) / a
+    }
+}
+
 fn ray_color(ray: &Ray) -> Color {
-    let unit_y = ray.dir().unit().y();
-    let t = 0.5 * (unit_y + 1.0);
+    let mut t = hit_sphere(Point3::at(0.0, 0.0, -1.0), 0.5, ray);
+    if t > 0.0 {
+        let n = (ray.at(t) - Vec3::new(0.0, 0.0, -1.0)).origin_vec().unit();
+        debug_assert!(n.length() == 1.0);
+        // Each n_i is in [-1, 1] which means that n_i + 1 is in [0, 2].
+        return Color::new((n.x() + 1.0) / 2.0, (n.y() + 1.0) / 2.0, (n.z() + 1.0) / 2.0);
+    }
+    let unit_dir = ray.dir().unit();
+    t = 0.5 * (unit_dir.y() + 1.0);
     return Color::new(1.0, 1.0, 1.0).lerp(Color::new(0.5, 0.7, 1.0), t)
 }
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
-    const IMAGE_WIDTH: usize = 384;
+    const IMAGE_WIDTH: usize = 768;
     const IMAGE_HEIGHT: usize = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as usize;
 
     let origin: Point3 = Default::default();

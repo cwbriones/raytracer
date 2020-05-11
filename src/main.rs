@@ -1,9 +1,15 @@
 mod vec;
 mod ray;
+mod camera;
 
+use camera::Camera;
 use vec::{Point3, Vec3};
 use ray::Ray;
 
+use rand::thread_rng;
+use rand::Rng;
+
+#[derive(Default)]
 pub struct Color {
     r: f64,
     g: f64,
@@ -21,14 +27,6 @@ impl Color {
         let ib = (255.999 * self.b) as usize;
 
         println!("{} {} {}", ir, ig, ib);
-    }
-
-    pub fn lerp(&self, to: Self, t: f64) -> Self {
-        Color {
-            r: (1.0 - t) * self.r + t*to.r,
-            g: (1.0 - t) * self.g + t*to.g,
-            b: (1.0 - t) * self.b + t*to.b,
-        }
     }
 }
 
@@ -114,33 +112,56 @@ impl Hittable for Sphere {
     }
 }
 
-fn ray_color(ray: &Ray, world: &[Box<dyn Hittable>]) -> Color {
+fn ray_color(ray: &Ray, world: &[Box<dyn Hittable>]) -> Vec3 {
     let mut hit_record = HitRecord::default();
 
     if hit_vec(world, ray, 0.0, ::std::f64::INFINITY, &mut hit_record) {
         let n = hit_record.normal;
-        Color::new((n.x() + 1.0) / 2.0, (n.y() + 1.0) / 2.0, (n.z() + 1.0) / 2.0)
+        Vec3::new((n.x() + 1.0) / 2.0, (n.y() + 1.0) / 2.0, (n.z() + 1.0) / 2.0)
     } else {
         let unit_dir = ray.dir().unit();
         let t = 0.5 * (unit_dir.y() + 1.0);
-        Color::new(1.0, 1.0, 1.0).lerp(Color::new(0.5, 0.7, 1.0), t)
+        lerp(Vec3::new(1.0, 1.0, 1.0), Vec3::new(0.5, 0.7, 1.0), t)
     }
+}
+
+fn lerp(from: Vec3, to: Vec3, t: f64) -> Vec3 {
+    Vec3::new(
+        (1.0 - t) * from.x() + t*to.x(),
+        (1.0 - t) * from.y() + t*to.y(),
+        (1.0 - t) * from.z() + t*to.z(),
+    )
+}
+
+fn average<T, F>(n: usize, mut f: F) -> T
+    where F: FnMut() -> T,
+          T: Default + ::std::ops::AddAssign + ::std::ops::Div<f64, Output=T>,
+{
+    let mut acc = <T as Default>::default();
+    for _ in 0..n {
+        acc += f();
+    }
+    acc / (n as f64)
 }
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
     const IMAGE_WIDTH: usize = 768;
     const IMAGE_HEIGHT: usize = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as usize;
-
-    let origin: Point3 = Default::default();
-    let horizontal = Vec3::new(4.0, 0.0, 0.0);
-    let vertical = Vec3::new(0.0, 2.25, 0.0);
-    let lower_left_corner = origin - horizontal / 2.0 - vertical / 2.0 - Vec3::zhat();
+    const SAMPLES_PER_PIXEL: usize = 100;
 
     let world: Vec<Box<dyn Hittable>> = vec![
         Box::new(Sphere::new(Point3::at(0.0, -100.5, -1.0), 100.0)),
         Box::new(Sphere::new(Point3::at(0.0, 0.0, -1.0), 0.5)),
     ];
+
+    let camera = Camera::builder()
+        .origin(Default::default())
+        .horizontal(Vec3::new(4.0, 0.0, 0.0))
+        .vertical(Vec3::new(0.0, 2.25, 0.0))
+        .build();
+
+    let mut rng = thread_rng();
 
     println!("P3 {} {}", IMAGE_WIDTH, IMAGE_HEIGHT);
     println!("255");
@@ -151,11 +172,13 @@ fn main() {
             (0..IMAGE_WIDTH).map(move |i| (i, j))
         })
         .map(|(i, j)| {
-            let u = i as f64 / (IMAGE_WIDTH - 1) as f64;
-            let v = j as f64 / (IMAGE_HEIGHT - 1) as f64;
-            let dir = (lower_left_corner + u * horizontal + v * vertical).origin_vec();
-            let ray = Ray::new(origin, dir);
-            ray_color(&ray, &world.as_slice())
+            let color_vec = average(SAMPLES_PER_PIXEL, || {
+                let u = (i as f64 + rng.next_f64()) / (IMAGE_WIDTH - 1) as f64;
+                let v = (j as f64 + rng.next_f64()) / (IMAGE_HEIGHT - 1) as f64;
+                let ray = camera.get_ray(u, v);
+                ray_color(&ray, &world.as_slice())
+            });
+            Color::new(color_vec.x(), color_vec.y(), color_vec.z())
         })
         .for_each(|c| c.write());
     eprintln!("\nDone.");

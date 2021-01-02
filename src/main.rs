@@ -39,14 +39,14 @@ impl Color {
 }
 
 #[derive(Default, Clone, Copy)]
-struct HitRecord {
+struct Hit {
     pub point: Point3,
     pub normal: Vec3,
     pub t: f64,
     pub front_face: bool,
 }
 
-impl HitRecord {
+impl Hit {
     #[inline]
     pub fn set_face_normal(&mut self, ray: &Ray, outward_normal: Vec3) {
         self.front_face = ray.dir().dot(&outward_normal) < 0.0;
@@ -55,23 +55,19 @@ impl HitRecord {
 }
 
 trait Hittable {
-    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64, rec: &mut HitRecord) -> bool;
+    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit>;
 }
 
-// FIXME: This should take an IntoIterator that turns into references of Hittables
-fn hit_vec(items: &[Box<dyn Hittable>], ray: &Ray, t_min: f64, t_max: f64, rec: &mut HitRecord) -> bool {
-        let mut hit_anything = false;
-        let mut closest = t_max;
-
-        for h in items {
-            let mut temp_rec = Default::default();
-            if h.hit(ray, t_min, closest, &mut temp_rec) {
-                hit_anything = true;
-                closest = temp_rec.t;
-                *rec = temp_rec;
-            }
-        }
-        return hit_anything;
+fn scatter<'a, I>(items: I, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit>
+    where
+        I: IntoIterator,
+        <I as IntoIterator>::Item: AsRef<dyn Hittable>,
+{
+    items.into_iter()
+        .fold(None, |closest, h| {
+            let max = closest.map(|h| h.t).unwrap_or(t_max);
+            h.as_ref().hit(ray, t_min, max).or(closest)
+        })
 }
 
 struct Sphere {
@@ -86,7 +82,7 @@ impl Sphere {
 }
 
 impl Hittable for Sphere {
-    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64, rec: &mut HitRecord) -> bool {
+    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
         let oc = ray.origin() - self.center;
         let a = ray.dir().square_length();
         let half_b = oc.dot(&ray.dir());
@@ -97,13 +93,14 @@ impl Hittable for Sphere {
             // The point of intersection.
             let root = discriminant.sqrt();
             let temp = (-half_b - root) / a;
+            let mut rec: Hit = Default::default();
             if t_min < temp && temp < t_max {
                 // First root
                 rec.t = temp;
                 rec.point = ray.at(rec.t);
                 let outward_normal = (rec.point - self.center) / self.radius;
                 rec.set_face_normal(ray, outward_normal);
-                return true;
+                return Some(rec);
             }
             let temp = (-half_b + root) / a;
             if t_min < temp && temp < t_max {
@@ -112,24 +109,21 @@ impl Hittable for Sphere {
                 rec.point = ray.at(rec.t);
                 let outward_normal = (rec.point - self.center) / self.radius;
                 rec.set_face_normal(ray, outward_normal);
-                return true;
+                return Some(rec);
             }
         }
         // Does not hit the sphere.
-        return false;
+        None
     }
 }
 
 fn ray_color<R: Rng>(ray: &Ray, world: &[Box<dyn Hittable>], rng: &mut R, depth: usize) -> Vec3 {
-    let mut hit_record = HitRecord::default();
-
     if depth == 0 {
         // This is what the book does in section 8.2, but it seems like
         // we could avoid this entirely by not using recursion.
         return Default::default();
     }
-
-    if hit_vec(world, ray, 0.001, ::std::f64::INFINITY, &mut hit_record) {
+    if let Some(hit_record) = scatter(world, ray, 0.001, ::std::f64::INFINITY) {
         let target = hit_record.point + hit_record.normal + random_in_unit_sphere(rng);
         0.5 * ray_color(&Ray::new(hit_record.point, target - hit_record.point), world, rng, depth - 1)
     } else {
@@ -143,8 +137,17 @@ fn random_in_unit_sphere<R: Rng>(rng: &mut R) -> Vec3 {
     let dist = Uniform::new(-1.0, 1.0);
     loop {
         let v = Vec3::rand_within(rng, dist);
-        if v.square_length() < 1.0 {
-            return v
+        let square_len = v.square_length();
+        if square_len < 1.0 {
+            // True lambertian reflection utilizes vectors on the unit sphere,
+            // not within it. However, the "approximation" is somewhat more intuitive
+            // and noticeably more performant so we leave it in place.
+            //
+            // Normalization results in a slightly darker surface since
+            // rays are more uniformly scattered.
+            //
+            // See Section 8.5.
+            return v;
         }
     }
 }

@@ -11,8 +11,8 @@ use camera::Camera;
 use vec::{Point3, Vec3};
 use ray::Ray;
 
-use rand::thread_rng;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
+use rand::rngs::SmallRng;
 use rand::distributions::Uniform;
 
 use image::{self, ImageBuffer};
@@ -252,7 +252,7 @@ fn main() {
                     .vertical(Vec3::new(0.0, 2.25, 0.0))
                     .build();
 
-                let mut rng = thread_rng();
+                let mut rng = SmallRng::from_entropy();
                 (worker_id..(image_height as usize))
                     .step_by(threads)
                     .flat_map(|j| (0..image_width).map(move |i| (i, j)))

@@ -115,9 +115,36 @@ impl Material for Metal {
     }
 }
 
+struct Dielectric {
+    albedo: Vec3,
+    refractive_index: f64,
+}
+
+impl Material for Dielectric {
+    fn scatter(&self, ray: &Ray, hit: &Hit) -> Option<(Vec3, Ray)> {
+        let refraction_ratio = if hit.front_face {
+            1.0 / self.refractive_index
+        } else {
+            self.refractive_index
+        };
+        let unit_dir = ray.dir().unit();
+        let refracted = refract(&unit_dir, &hit.normal, refraction_ratio);
+        Some((self.albedo, Ray::new(hit.point, refracted)))
+    }
+}
+
+
 /// Reflect an inbound ray v across a surface given the surface normal n.
 fn reflect(v: &Vec3, n: &Vec3) -> Vec3 {
     *v - (2.0 * v.dot(n)) * *n
+}
+
+fn refract(uv: &Vec3, n: &Vec3, etai_over_etat: f64) -> Vec3 {
+    let cos_theta = uv.negate().dot(n).min(1.0);
+    let r_out_perp = etai_over_etat * (*uv + cos_theta * *n);
+    let r_out_parallel = -1.0 * (1.0 - r_out_perp.square_length()).abs().sqrt() * *n;
+
+    r_out_perp + r_out_parallel
 }
 
 struct Sphere {
@@ -299,8 +326,14 @@ fn main() {
             let img = img.clone();
             s.spawn(move |_| {
                 let material_ground = Rc::new(Lambertian(Vec3::new(0.8, 0.8, 0.0)));
-                let material_center = Rc::new(Lambertian(Vec3::new(0.7, 0.3, 0.3)));
-                let material_left = Rc::new(Metal(Vec3::new(0.8, 0.8, 0.8), 0.3));
+                let material_center = Rc::new(Dielectric {
+                    albedo: Vec3::new(1.0, 1.0, 1.0),
+                    refractive_index: 1.5,
+                });
+                let material_left = Rc::new(Dielectric {
+                    albedo: Vec3::new(1.0, 1.0, 1.0),
+                    refractive_index: 1.5,
+                });
                 let material_right = Rc::new(Metal(Vec3::new(0.8, 0.6, 0.2), 1.0));
 
                 let world: Vec<Box<dyn Hittable>> = vec![

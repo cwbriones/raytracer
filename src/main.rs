@@ -2,6 +2,7 @@ mod vec;
 mod ray;
 mod camera;
 
+use std::time::Instant;
 use camera::Camera;
 use vec::{Point3, Vec3};
 use ray::Ray;
@@ -151,6 +152,7 @@ fn main() {
     const IMAGE_WIDTH: u32 = 768;
     const IMAGE_HEIGHT: u32 = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as u32;
     const SAMPLES_PER_PIXEL: usize = 100;
+    const RAYS: usize = (IMAGE_WIDTH * IMAGE_HEIGHT) as usize * SAMPLES_PER_PIXEL;
 
     let world: Vec<Box<dyn Hittable>> = vec![
         Box::new(Sphere::new(Point3::at(0.0, -100.5, -1.0), 100.0)),
@@ -165,6 +167,7 @@ fn main() {
 
     let mut rng = thread_rng();
 
+    let start = Instant::now();
     let mut img: RgbImage = ImageBuffer::new(IMAGE_WIDTH, IMAGE_HEIGHT);
     (0..IMAGE_HEIGHT)
         .rev()
@@ -186,7 +189,8 @@ fn main() {
                 (255.999 * color_vec.z()) as u8
             ])
         });
-        // .for_each(|c| c.write());
-    eprintln!("\nDone.");
+    let elapsed_sec = start.elapsed().as_secs_f64();
+    let rays_per_sec = (RAYS as f64) / elapsed_sec;
+    eprintln!("\nDone in {:.2}s ({:.0} rays/s)", elapsed_sec, rays_per_sec);
     img.save("output.png").unwrap();
 }

@@ -154,15 +154,14 @@ fn main() {
     const IMAGE_WIDTH: u32 = 768;
     const IMAGE_HEIGHT: u32 = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as u32;
     const SAMPLES_PER_PIXEL: usize = 100;
+    const WORKERS: usize = 4;
     const RAYS: usize = (IMAGE_WIDTH * IMAGE_HEIGHT) as usize * SAMPLES_PER_PIXEL;
 
     let start = Instant::now();
     let img = crossbeam::scope(|s| {
-        let (send_coord, r_coord) = channel::bounded(1024);
-        let (send_pxl, recv_pxl) = channel::bounded(1024);
-        for _ in 0..4 {
+        let (send_pxl, recv_pxl) = channel::bounded(256);
+        for worker_id in 0..WORKERS {
             let send_pxl = send_pxl.clone();
-            let r = r_coord.clone();
             s.spawn(move |_| {
                 let world: Vec<Box<dyn Hittable>> = vec![
                     Box::new(Sphere::new(Point3::at(0.0, -100.5, -1.0), 100.0)),
@@ -176,36 +175,28 @@ fn main() {
                     .build();
 
                 let mut rng = thread_rng();
-                while let Ok((i, j)) = r.recv() {
-                    let color_vec = average(SAMPLES_PER_PIXEL, || {
-                        let u = (i as f64 + rng.next_f64()) / (IMAGE_WIDTH - 1) as f64;
-                        let v = (j as f64 + rng.next_f64()) / (IMAGE_HEIGHT - 1) as f64;
-                        let ray = camera.get_ray(u, v);
-                        ray_color(&ray, &world.as_slice())
+                (worker_id..(IMAGE_HEIGHT as usize))
+                    .step_by(WORKERS)
+                    .flat_map(|j| (0..IMAGE_WIDTH).map(move |i| (i, j)))
+                    .for_each(|(i, j)| {
+                        let color_vec = average(SAMPLES_PER_PIXEL, || {
+                            let u = (i as f64 + rng.next_f64()) / (IMAGE_WIDTH - 1) as f64;
+                            let v = (j as f64 + rng.next_f64()) / (IMAGE_HEIGHT - 1) as f64;
+                            let ray = camera.get_ray(u, v);
+                            ray_color(&ray, &world.as_slice())
+                        });
+                        send_pxl.send((i, j, image::Rgb([
+                            (255.999 * color_vec.x()) as u8,
+                            (255.999 * color_vec.y()) as u8,
+                            (255.999 * color_vec.z()) as u8
+                        ]))).unwrap();
                     });
-                    send_pxl.send((i, j, image::Rgb([
-                        (255.999 * color_vec.x()) as u8,
-                        (255.999 * color_vec.y()) as u8,
-                        (255.999 * color_vec.z()) as u8
-                    ]))).unwrap();
-                }
             });
         }
-        drop(send_pxl);
-        s.spawn(move |_| {
-            (0..IMAGE_HEIGHT)
-                .rev()
-                .flat_map(|j| {
-                    eprint!("\rScanlines remaining: {}     ", j);
-                    (0..IMAGE_WIDTH).map(move |i| (i, j))
-                })
-                .for_each(|coords| {
-                    send_coord.send(coords).unwrap()
-                });
-        });
+        drop(send_pxl); // Important, otherwise we will block forever on the recv
         let mut img: RgbImage = ImageBuffer::new(IMAGE_WIDTH, IMAGE_HEIGHT);
         while let Ok((i, j, pixel)) = recv_pxl.recv() {
-            img.put_pixel(i, j, pixel)
+            img.put_pixel(i, IMAGE_HEIGHT - j as u32 - 1, pixel)
         }
         img
     }).unwrap();

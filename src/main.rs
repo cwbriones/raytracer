@@ -3,6 +3,9 @@ mod ray;
 mod camera;
 
 use std::time::Instant;
+use std::sync::Mutex;
+use std::sync::Arc;
+
 use camera::Camera;
 use vec::{Point3, Vec3};
 use ray::Ray;
@@ -10,9 +13,7 @@ use ray::Ray;
 use rand::thread_rng;
 use rand::Rng;
 
-use image::{self, ImageBuffer, RgbImage};
-
-use crossbeam::channel;
+use image::{self, ImageBuffer};
 
 #[derive(Default)]
 pub struct Color {
@@ -159,9 +160,9 @@ fn main() {
 
     let start = Instant::now();
     let img = crossbeam::scope(|s| {
-        let (send_pxl, recv_pxl) = channel::bounded(256);
+        let img = Arc::new(Mutex::new(ImageBuffer::new(IMAGE_WIDTH, IMAGE_HEIGHT)));
         for worker_id in 0..WORKERS {
-            let send_pxl = send_pxl.clone();
+            let img = img.clone();
             s.spawn(move |_| {
                 let world: Vec<Box<dyn Hittable>> = vec![
                     Box::new(Sphere::new(Point3::at(0.0, -100.5, -1.0), 100.0)),
@@ -185,21 +186,22 @@ fn main() {
                             let ray = camera.get_ray(u, v);
                             ray_color(&ray, &world.as_slice())
                         });
-                        send_pxl.send((i, j, image::Rgb([
+                        let mut guard = img.lock().unwrap();
+                        guard.put_pixel(i, IMAGE_HEIGHT - j as u32 - 1, image::Rgb([
                             (255.999 * color_vec.x()) as u8,
                             (255.999 * color_vec.y()) as u8,
                             (255.999 * color_vec.z()) as u8
-                        ]))).unwrap();
+                        ]));
                     });
             });
         }
-        drop(send_pxl); // Important, otherwise we will block forever on the recv
-        let mut img: RgbImage = ImageBuffer::new(IMAGE_WIDTH, IMAGE_HEIGHT);
-        while let Ok((i, j, pixel)) = recv_pxl.recv() {
-            img.put_pixel(i, IMAGE_HEIGHT - j as u32 - 1, pixel)
-        }
         img
     }).unwrap();
+
+    let img = Arc::try_unwrap(img)
+        .expect("all other threads have been dropped")
+        .into_inner()
+        .expect("all other threads have been dropped");
 
     let elapsed_sec = start.elapsed().as_secs_f64();
     let rays_per_sec = (RAYS as f64) / elapsed_sec;

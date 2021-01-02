@@ -6,12 +6,14 @@ use std::time::Instant;
 use std::sync::Mutex;
 use std::sync::Arc;
 
+use argh::FromArgs;
 use camera::Camera;
 use vec::{Point3, Vec3};
 use ray::Ray;
 
 use rand::thread_rng;
 use rand::Rng;
+use rand::distributions::Uniform;
 
 use image::{self, ImageBuffer};
 
@@ -63,7 +65,7 @@ fn hit_vec(items: &[Box<dyn Hittable>], ray: &Ray, t_min: f64, t_max: f64, rec: 
 
         for h in items {
             let mut temp_rec = Default::default();
-            if h.hit(ray, t_min, t_max, &mut temp_rec) {
+            if h.hit(ray, t_min, closest, &mut temp_rec) {
                 hit_anything = true;
                 closest = temp_rec.t;
                 *rec = temp_rec;
@@ -118,16 +120,32 @@ impl Hittable for Sphere {
     }
 }
 
-fn ray_color(ray: &Ray, world: &[Box<dyn Hittable>]) -> Vec3 {
+fn ray_color<R: Rng>(ray: &Ray, world: &[Box<dyn Hittable>], rng: &mut R, depth: usize) -> Vec3 {
     let mut hit_record = HitRecord::default();
 
-    if hit_vec(world, ray, 0.0, ::std::f64::INFINITY, &mut hit_record) {
-        let n = hit_record.normal;
-        Vec3::new((n.x() + 1.0) / 2.0, (n.y() + 1.0) / 2.0, (n.z() + 1.0) / 2.0)
+    if depth == 0 {
+        // This is what the book does in section 8.2, but it seems like
+        // we could avoid this entirely by not using recursion.
+        return Default::default();
+    }
+
+    if hit_vec(world, ray, 0.001, ::std::f64::INFINITY, &mut hit_record) {
+        let target = hit_record.point + hit_record.normal + random_in_unit_sphere(rng);
+        0.5 * ray_color(&Ray::new(hit_record.point, target - hit_record.point), world, rng, depth - 1)
     } else {
         let unit_dir = ray.dir().unit();
         let t = 0.5 * (unit_dir.y() + 1.0);
         lerp(Vec3::new(1.0, 1.0, 1.0), Vec3::new(0.5, 0.7, 1.0), t)
+    }
+}
+
+fn random_in_unit_sphere<R: Rng>(rng: &mut R) -> Vec3 {
+    let dist = Uniform::new(-1.0, 1.0);
+    loop {
+        let v = Vec3::rand_within(rng, dist);
+        if v.square_length() < 1.0 {
+            return v
+        }
     }
 }
 
@@ -150,18 +168,74 @@ fn average<T, F>(n: usize, mut f: F) -> T
     acc / (n as f64)
 }
 
+/// Extension trait to add a clamp method to floats.
+///
+/// This conflicts with a method to be stabilized in Rust 1.50, hence the odd spelling.
+trait KlampExt {
+    fn klamp(self, min: Self, max: Self) -> Self;
+}
+
+impl KlampExt for f64 {
+    #[must_use = "method returns a new number and does not mutate the original value"]
+    #[inline]
+    fn klamp(self, min: f64, max: f64) -> f64 {
+        // This is copied directly from std::f64::clamp,
+        // with the exception of debug_assert!
+        debug_assert!(min <= max);
+        let mut x = self;
+        if x < min {
+            x = min;
+        }
+        if x > max {
+            x = max;
+        }
+        x
+    }
+}
+
+
+#[derive(FromArgs)]
+/// A simple ray tracer implementation in rust.
+struct TracerConfig {
+    #[argh(option, short='n', default="TracerConfig::default_samples()")]
+    /// the number of samples to take per pixel.
+    num_samples: usize,
+    #[argh(option, short='o', default="TracerConfig::default_output()")]
+    /// destination of the output image.
+    ///
+    /// supported formats: png, jpg
+    output: String,
+    #[argh(option, default="TracerConfig::default_threads()")]
+    /// the number of threads to use.
+    threads: usize,
+    #[argh(option, default="TracerConfig::default_width()")]
+    /// the output image width.
+    width: u32,
+}
+
+impl TracerConfig {
+    const fn default_threads() -> usize { 4 }
+    const fn default_samples() -> usize { 100 }
+    const fn default_width() -> u32 { 400 }
+
+    fn default_output() -> String { "output.png".into() }
+}
+
 fn main() {
+    let config = argh::from_env::<TracerConfig>();
+
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
-    const IMAGE_WIDTH: u32 = 768;
-    const IMAGE_HEIGHT: u32 = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as u32;
-    const SAMPLES_PER_PIXEL: usize = 100;
-    const WORKERS: usize = 4;
-    const RAYS: usize = (IMAGE_WIDTH * IMAGE_HEIGHT) as usize * SAMPLES_PER_PIXEL;
+    let image_width = config.width;
+    let threads = config.threads;
+    let image_height = (image_width as f64 / ASPECT_RATIO) as u32;
+    let samples_per_pixel: usize = config.num_samples;
+    let rays = (image_width * image_height) as usize * samples_per_pixel;
+    let max_depth = 50;
 
     let start = Instant::now();
     let img = crossbeam::scope(|s| {
-        let img = Arc::new(Mutex::new(ImageBuffer::new(IMAGE_WIDTH, IMAGE_HEIGHT)));
-        for worker_id in 0..WORKERS {
+        let img = Arc::new(Mutex::new(ImageBuffer::new(image_width, image_height)));
+        for worker_id in 0..threads {
             let img = img.clone();
             s.spawn(move |_| {
                 let world: Vec<Box<dyn Hittable>> = vec![
@@ -176,21 +250,24 @@ fn main() {
                     .build();
 
                 let mut rng = thread_rng();
-                (worker_id..(IMAGE_HEIGHT as usize))
-                    .step_by(WORKERS)
-                    .flat_map(|j| (0..IMAGE_WIDTH).map(move |i| (i, j)))
+                (worker_id..(image_height as usize))
+                    .step_by(threads)
+                    .flat_map(|j| (0..image_width).map(move |i| (i, j)))
                     .for_each(|(i, j)| {
-                        let color_vec = average(SAMPLES_PER_PIXEL, || {
-                            let u = (i as f64 + rng.next_f64()) / (IMAGE_WIDTH - 1) as f64;
-                            let v = (j as f64 + rng.next_f64()) / (IMAGE_HEIGHT - 1) as f64;
+                        let color_vec = average(samples_per_pixel, || {
+                            let u = (i as f64 + rng.gen::<f64>()) / (image_width - 1) as f64;
+                            let v = (j as f64 + rng.gen::<f64>()) / (image_height - 1) as f64;
                             let ray = camera.get_ray(u, v);
-                            ray_color(&ray, &world.as_slice())
+                            ray_color(&ray, &world.as_slice(), &mut rng, max_depth)
                         });
                         let mut guard = img.lock().unwrap();
-                        guard.put_pixel(i, IMAGE_HEIGHT - j as u32 - 1, image::Rgb([
-                            (255.999 * color_vec.x()) as u8,
-                            (255.999 * color_vec.y()) as u8,
-                            (255.999 * color_vec.z()) as u8
+                        let r = 256. * (color_vec.x()).sqrt().klamp(0.0, 0.99);
+                        let g = 256. * (color_vec.y()).sqrt().klamp(0.0, 0.99);
+                        let b = 256. * (color_vec.z()).sqrt().klamp(0.0, 0.99);
+                        guard.put_pixel(i, image_height - j as u32 - 1, image::Rgb([
+                            r as u8,
+                            g as u8,
+                            b as u8,
                         ]));
                     });
             });
@@ -204,7 +281,7 @@ fn main() {
         .expect("all other threads have been dropped");
 
     let elapsed_sec = start.elapsed().as_secs_f64();
-    let rays_per_sec = (RAYS as f64) / elapsed_sec;
+    let rays_per_sec = (rays as f64) / elapsed_sec;
     eprintln!("\nDone in {:.2}s ({:.0} rays/s)", elapsed_sec, rays_per_sec);
-    img.save("output.png").unwrap();
+    img.save(config.output).unwrap();
 }

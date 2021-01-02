@@ -1,3 +1,7 @@
+use rand::Rng;
+use rand::distributions::Standard;
+use rand::distributions::Distribution;
+
 use std::ops::Sub;
 use std::ops::Add;
 use std::ops::AddAssign;
@@ -5,7 +9,6 @@ use std::ops::Mul;
 use std::ops::MulAssign;
 use std::ops::Div;
 use std::ops::DivAssign;
-
 use std::fmt::Display;
 
 // TODO: This can probably be made simpler using a phantom type to distinguish absolute
@@ -25,12 +28,12 @@ impl Point3 {
         Vec3::new(self.0, self.1, self.2)
     }
 
-    #[inline]
-    pub fn x(&self) -> f64 { self.0 }
-    #[inline]
-    pub fn y(&self) -> f64 { self.1 }
-    #[inline]
-    pub fn z(&self) -> f64 { self.2 }
+    // #[inline]
+    // pub fn x(&self) -> f64 { self.0 }
+    // #[inline]
+    // pub fn y(&self) -> f64 { self.1 }
+    // #[inline]
+    // pub fn z(&self) -> f64 { self.2 }
 }
 
 impl Default for Point3 {
@@ -113,6 +116,26 @@ impl Vec3 {
     #[inline]
     pub fn unit(&self) -> Self {
         *self / self.length()
+    }
+
+    #[inline]
+    pub fn rand_within<R: Rng, D: Distribution<f64>>(rng: &mut R, dist: D) -> Self {
+        Vec3(
+            dist.sample(rng),
+            dist.sample(rng),
+            dist.sample(rng),
+        )
+    }
+}
+
+impl Distribution<Vec3> for Standard {
+    #[inline]
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Vec3 {
+        Vec3(
+            rng.gen(),
+            rng.gen(),
+            rng.gen(),
+        )
     }
 }
 

@@ -12,6 +12,8 @@ use rand::Rng;
 
 use image::{self, ImageBuffer, RgbImage};
 
+use crossbeam::channel;
+
 #[derive(Default)]
 pub struct Color {
     r: f64,
@@ -154,41 +156,60 @@ fn main() {
     const SAMPLES_PER_PIXEL: usize = 100;
     const RAYS: usize = (IMAGE_WIDTH * IMAGE_HEIGHT) as usize * SAMPLES_PER_PIXEL;
 
-    let world: Vec<Box<dyn Hittable>> = vec![
-        Box::new(Sphere::new(Point3::at(0.0, -100.5, -1.0), 100.0)),
-        Box::new(Sphere::new(Point3::at(0.0, 0.0, -1.0), 0.5)),
-    ];
-
-    let camera = Camera::builder()
-        .origin(Default::default())
-        .horizontal(Vec3::new(4.0, 0.0, 0.0))
-        .vertical(Vec3::new(0.0, 2.25, 0.0))
-        .build();
-
-    let mut rng = thread_rng();
-
     let start = Instant::now();
-    let mut img: RgbImage = ImageBuffer::new(IMAGE_WIDTH, IMAGE_HEIGHT);
-    (0..IMAGE_HEIGHT)
-        .rev()
-        .flat_map(|j| {
-            eprint!("\rScanlines remaining: {}     ", j);
-            (0..IMAGE_WIDTH).map(move |i| (i, j))
-        })
-        .for_each(|(i, j)| {
-            let color_vec = average(SAMPLES_PER_PIXEL, || {
-                let u = (i as f64 + rng.next_f64()) / (IMAGE_WIDTH - 1) as f64;
-                let v = (j as f64 + rng.next_f64()) / (IMAGE_HEIGHT - 1) as f64;
-                let ray = camera.get_ray(u, v);
-                ray_color(&ray, &world.as_slice())
+    let img = crossbeam::scope(|s| {
+        let (send_coord, r_coord) = channel::bounded(1024);
+        let (send_pxl, recv_pxl) = channel::bounded(1024);
+        for _ in 0..4 {
+            let send_pxl = send_pxl.clone();
+            let r = r_coord.clone();
+            s.spawn(move |_| {
+                let world: Vec<Box<dyn Hittable>> = vec![
+                    Box::new(Sphere::new(Point3::at(0.0, -100.5, -1.0), 100.0)),
+                    Box::new(Sphere::new(Point3::at(0.0, 0.0, -1.0), 0.5)),
+                ];
+
+                let camera = Camera::builder()
+                    .origin(Default::default())
+                    .horizontal(Vec3::new(4.0, 0.0, 0.0))
+                    .vertical(Vec3::new(0.0, 2.25, 0.0))
+                    .build();
+
+                let mut rng = thread_rng();
+                while let Ok((i, j)) = r.recv() {
+                    let color_vec = average(SAMPLES_PER_PIXEL, || {
+                        let u = (i as f64 + rng.next_f64()) / (IMAGE_WIDTH - 1) as f64;
+                        let v = (j as f64 + rng.next_f64()) / (IMAGE_HEIGHT - 1) as f64;
+                        let ray = camera.get_ray(u, v);
+                        ray_color(&ray, &world.as_slice())
+                    });
+                    send_pxl.send((i, j, image::Rgb([
+                        (255.999 * color_vec.x()) as u8,
+                        (255.999 * color_vec.y()) as u8,
+                        (255.999 * color_vec.z()) as u8
+                    ]))).unwrap();
+                }
             });
-            let pixel = img.get_pixel_mut(i, IMAGE_HEIGHT - 1 - j);
-            *pixel = image::Rgb([
-                (255.999 * color_vec.x()) as u8,
-                (255.999 * color_vec.y()) as u8,
-                (255.999 * color_vec.z()) as u8
-            ])
+        }
+        drop(send_pxl);
+        s.spawn(move |_| {
+            (0..IMAGE_HEIGHT)
+                .rev()
+                .flat_map(|j| {
+                    eprint!("\rScanlines remaining: {}     ", j);
+                    (0..IMAGE_WIDTH).map(move |i| (i, j))
+                })
+                .for_each(|coords| {
+                    send_coord.send(coords).unwrap()
+                });
         });
+        let mut img: RgbImage = ImageBuffer::new(IMAGE_WIDTH, IMAGE_HEIGHT);
+        while let Ok((i, j, pixel)) = recv_pxl.recv() {
+            img.put_pixel(i, j, pixel)
+        }
+        img
+    }).unwrap();
+
     let elapsed_sec = start.elapsed().as_secs_f64();
     let rays_per_sec = (RAYS as f64) / elapsed_sec;
     eprintln!("\nDone in {:.2}s ({:.0} rays/s)", elapsed_sec, rays_per_sec);

@@ -9,6 +9,8 @@ use ray::Ray;
 use rand::thread_rng;
 use rand::Rng;
 
+use image::{self, ImageBuffer, RgbImage};
+
 #[derive(Default)]
 pub struct Color {
     r: f64,
@@ -146,8 +148,8 @@ fn average<T, F>(n: usize, mut f: F) -> T
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
-    const IMAGE_WIDTH: usize = 768;
-    const IMAGE_HEIGHT: usize = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as usize;
+    const IMAGE_WIDTH: u32 = 768;
+    const IMAGE_HEIGHT: u32 = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as u32;
     const SAMPLES_PER_PIXEL: usize = 100;
 
     let world: Vec<Box<dyn Hittable>> = vec![
@@ -163,23 +165,28 @@ fn main() {
 
     let mut rng = thread_rng();
 
-    println!("P3 {} {}", IMAGE_WIDTH, IMAGE_HEIGHT);
-    println!("255");
+    let mut img: RgbImage = ImageBuffer::new(IMAGE_WIDTH, IMAGE_HEIGHT);
     (0..IMAGE_HEIGHT)
         .rev()
         .flat_map(|j| {
             eprint!("\rScanlines remaining: {}     ", j);
             (0..IMAGE_WIDTH).map(move |i| (i, j))
         })
-        .map(|(i, j)| {
+        .for_each(|(i, j)| {
             let color_vec = average(SAMPLES_PER_PIXEL, || {
                 let u = (i as f64 + rng.next_f64()) / (IMAGE_WIDTH - 1) as f64;
                 let v = (j as f64 + rng.next_f64()) / (IMAGE_HEIGHT - 1) as f64;
                 let ray = camera.get_ray(u, v);
                 ray_color(&ray, &world.as_slice())
             });
-            Color::new(color_vec.x(), color_vec.y(), color_vec.z())
-        })
-        .for_each(|c| c.write());
+            let pixel = img.get_pixel_mut(i, IMAGE_HEIGHT - 1 - j);
+            *pixel = image::Rgb([
+                (255.999 * color_vec.x()) as u8,
+                (255.999 * color_vec.y()) as u8,
+                (255.999 * color_vec.z()) as u8
+            ])
+        });
+        // .for_each(|c| c.write());
     eprintln!("\nDone.");
+    img.save("output.png").unwrap();
 }

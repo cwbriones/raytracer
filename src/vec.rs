@@ -100,6 +100,11 @@ impl Vec3 {
     }
 
     #[inline]
+    pub fn mul_pointwise(&self, other: &Self) -> Vec3 {
+        Vec3(self.0 * other.0, self.1 * other.1, self.2 * other.2)
+    }
+
+    #[inline]
     pub fn dot(&self, other: &Self) -> f64 {
         self.0 * other.0 + self.1 * other.1 + self.2 * other.2
     }
@@ -125,6 +130,11 @@ impl Vec3 {
             dist.sample(rng),
             dist.sample(rng),
         )
+    }
+
+    pub fn near_zero(&self) -> bool {
+        let s = 1e-8;
+        self.0.abs() < s && self.1.abs() < s && self.2.abs() < s
     }
 }
 

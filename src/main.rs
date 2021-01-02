@@ -5,12 +5,14 @@ mod camera;
 use std::time::Instant;
 use std::sync::Mutex;
 use std::sync::Arc;
+use std::rc::Rc;
 
 use argh::FromArgs;
 use camera::Camera;
 use vec::{Point3, Vec3};
 use ray::Ray;
 
+use rand::thread_rng;
 use rand::{Rng, SeedableRng};
 use rand::rngs::SmallRng;
 use rand::distributions::Uniform;
@@ -38,19 +40,27 @@ impl Color {
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone)]
 struct Hit {
     pub point: Point3,
     pub normal: Vec3,
     pub t: f64,
     pub front_face: bool,
+    pub material: Rc<dyn Material>,
 }
 
 impl Hit {
-    #[inline]
-    pub fn set_face_normal(&mut self, ray: &Ray, outward_normal: Vec3) {
-        self.front_face = ray.dir().dot(&outward_normal) < 0.0;
-        self.normal = if self.front_face { outward_normal } else { outward_normal.negate() };
+    pub fn new(ray: &Ray, t: f64, outward_normal: Vec3, material: Rc<dyn Material>) -> Self {
+        let point = ray.at(t);
+        let front_face = ray.dir().dot(&outward_normal) < 0.0;
+        let normal = if front_face { outward_normal } else { outward_normal.negate() };
+        Hit {
+            point,
+            normal,
+            t,
+            front_face,
+            material,
+        }
     }
 }
 
@@ -65,19 +75,60 @@ fn scatter<'a, I>(items: I, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit>
 {
     items.into_iter()
         .fold(None, |closest, h| {
-            let max = closest.map(|h| h.t).unwrap_or(t_max);
+            let max = closest.as_ref().map(|h| h.t).unwrap_or(t_max);
             h.as_ref().hit(ray, t_min, max).or(closest)
         })
+}
+
+trait Material {
+    fn scatter(&self, ray: &Ray, hit: &Hit) -> Option<(Vec3, Ray)>;
+}
+
+struct Lambertian(Vec3);
+
+impl Material for Lambertian {
+    fn scatter(&self, _: &Ray, hit: &Hit) -> Option<(Vec3, Ray)> {
+        // FIXME: How can we pass in the current RNG?
+        let mut scatter_direction = hit.normal + random_in_unit_sphere(&mut thread_rng());
+
+        // Catch degenerate scatter direction
+        if scatter_direction.near_zero() {
+            scatter_direction = hit.normal;
+        }
+
+        let scattered = Ray::new(hit.point, scatter_direction);
+        Some((self.0, scattered))
+    }
+}
+
+struct Metal(Vec3, f64);
+
+impl Material for Metal {
+    fn scatter(&self, ray: &Ray, hit: &Hit) -> Option<(Vec3, Ray)> {
+        let reflected = reflect(&ray.dir(), &hit.normal);
+        let scattered = Ray::new(hit.point, reflected + self.1 * random_in_unit_sphere(&mut thread_rng()));
+        if scattered.dir().dot(&hit.normal) > 1e-8 {
+            Some((self.0, Ray::new(hit.point, scattered.dir())))
+        } else {
+            None
+        }
+    }
+}
+
+/// Reflect an inbound ray v across a surface given the surface normal n.
+fn reflect(v: &Vec3, n: &Vec3) -> Vec3 {
+    *v - (2.0 * v.dot(n)) * *n
 }
 
 struct Sphere {
     center: Point3,
     radius: f64,
+    material: Rc<dyn Material>,
 }
 
 impl Sphere {
-    fn new(center: Point3, radius: f64) -> Self {
-        Sphere { center, radius }
+    fn new(center: Point3, radius: f64, material: Rc<dyn Material>) -> Self {
+        Sphere { center, radius, material }
     }
 }
 
@@ -93,23 +144,26 @@ impl Hittable for Sphere {
             // The point of intersection.
             let root = discriminant.sqrt();
             let temp = (-half_b - root) / a;
-            let mut rec: Hit = Default::default();
             if t_min < temp && temp < t_max {
                 // First root
-                rec.t = temp;
-                rec.point = ray.at(rec.t);
-                let outward_normal = (rec.point - self.center) / self.radius;
-                rec.set_face_normal(ray, outward_normal);
-                return Some(rec);
+                let outward_normal = (ray.at(temp) - self.center) / self.radius;
+                return Some(Hit::new(
+                    ray,
+                    temp,
+                    outward_normal,
+                    self.material.clone(),
+                ));
             }
             let temp = (-half_b + root) / a;
             if t_min < temp && temp < t_max {
                 // Second root
-                rec.t = temp;
-                rec.point = ray.at(rec.t);
-                let outward_normal = (rec.point - self.center) / self.radius;
-                rec.set_face_normal(ray, outward_normal);
-                return Some(rec);
+                let outward_normal = (ray.at(temp) - self.center) / self.radius;
+                return Some(Hit::new(
+                    ray,
+                    temp,
+                    outward_normal,
+                    self.material.clone(),
+                ));
             }
         }
         // Does not hit the sphere.
@@ -123,9 +177,12 @@ fn ray_color<R: Rng>(ray: &Ray, world: &[Box<dyn Hittable>], rng: &mut R, depth:
         // we could avoid this entirely by not using recursion.
         return Default::default();
     }
-    if let Some(hit_record) = scatter(world, ray, 0.001, ::std::f64::INFINITY) {
-        let target = hit_record.point + hit_record.normal + random_in_unit_sphere(rng);
-        0.5 * ray_color(&Ray::new(hit_record.point, target - hit_record.point), world, rng, depth - 1)
+    if let Some(hit) = scatter(world, ray, 0.001, ::std::f64::INFINITY) {
+        return if let Some((attenutation, ref ray_out)) = hit.material.scatter(ray, &hit) {
+            attenutation.mul_pointwise(&ray_color(ray_out, world, rng, depth - 1))
+        } else {
+            Default::default()
+        }
     } else {
         let unit_dir = ray.dir().unit();
         let t = 0.5 * (unit_dir.y() + 1.0);
@@ -241,9 +298,32 @@ fn main() {
         for worker_id in 0..threads {
             let img = img.clone();
             s.spawn(move |_| {
+                let material_ground = Rc::new(Lambertian(Vec3::new(0.8, 0.8, 0.0)));
+                let material_center = Rc::new(Lambertian(Vec3::new(0.7, 0.3, 0.3)));
+                let material_left = Rc::new(Metal(Vec3::new(0.8, 0.8, 0.8), 0.3));
+                let material_right = Rc::new(Metal(Vec3::new(0.8, 0.6, 0.2), 1.0));
+
                 let world: Vec<Box<dyn Hittable>> = vec![
-                    Box::new(Sphere::new(Point3::at(0.0, -100.5, -1.0), 100.0)),
-                    Box::new(Sphere::new(Point3::at(0.0, 0.0, -1.0), 0.5)),
+                    Box::new(Sphere::new(
+                        Point3::at(0.0, -100.5, -1.0),
+                        100.0,
+                        material_ground
+                    )),
+                    Box::new(Sphere::new(
+                        Point3::at(0.0, 0.0, -1.0),
+                        0.5,
+                        material_center
+                    )),
+                    Box::new(Sphere::new(
+                        Point3::at(-1.0, 0.0, -1.0),
+                        0.5,
+                        material_left
+                    )),
+                    Box::new(Sphere::new(
+                        Point3::at(1.0, 0.0, -1.0),
+                        0.5,
+                        material_right
+                    )),
                 ];
 
                 let camera = Camera::builder()

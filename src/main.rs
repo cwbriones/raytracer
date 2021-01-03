@@ -1,21 +1,22 @@
 mod vec;
 mod ray;
 mod camera;
+mod util;
 
 use std::time::Instant;
 use std::sync::Mutex;
 use std::sync::Arc;
 
-use argh::FromArgs;
 use camera::Camera;
 use vec::{Point3, Vec3};
 use ray::Ray;
+use util::RandUtil;
 
+use argh::FromArgs;
 use rand::thread_rng;
 use rand::{Rng, SeedableRng};
 use rand::rngs::SmallRng;
 use rand::distributions::Uniform;
-
 use image::{self, ImageBuffer};
 
 #[derive(Clone)]
@@ -110,7 +111,7 @@ fn lambertian_scatter<R: Rng>(_: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
     // See Section 8.5.
     //
     // FIXME: How can we pass in the current RNG?
-    let mut scatter_direction = hit.normal + random_in_unit_sphere(rng).unit();
+    let mut scatter_direction = hit.normal + rng.gen_in_unit_sphere().unit();
 
     // Catch degenerate scatter direction
     if scatter_direction.near_zero() {
@@ -123,7 +124,7 @@ fn lambertian_scatter<R: Rng>(_: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
 
 fn metallic_scatter<R: Rng>(fuzz: f64, ray: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
     let reflected = reflect(&ray.dir(), &hit.normal);
-    let scattered = Ray::new(hit.point, reflected + fuzz * random_in_unit_sphere(rng));
+    let scattered = Ray::new(hit.point, reflected + fuzz * rng.gen_in_unit_sphere());
     if scattered.dir().dot(&hit.normal) > 1e-8 {
         Some(Ray::new(hit.point, scattered.dir()))
     } else {
@@ -182,6 +183,25 @@ struct Scene {
 }
 
 impl Scene {
+    pub fn ray_color<R: Rng>(&self, ray: &Ray, rng: &mut R, depth: usize) -> Vec3 {
+        if depth == 0 {
+            // This is what the book does in section 8.2, but it seems like
+            // we could avoid this entirely by not using recursion.
+            return Default::default();
+        }
+        if let Some(hit) = self.scatter(ray, 0.001, ::std::f64::INFINITY) {
+            return if let Some((attenutation, ref ray_out)) = hit.material.scatter(ray, &hit, rng) {
+                attenutation.mul_pointwise(&self.ray_color(ray_out, rng, depth - 1))
+            } else {
+                Default::default()
+            }
+        } else {
+            let unit_dir = ray.dir().unit();
+            let t = 0.5 * (unit_dir.y() + 1.0);
+            lerp(Vec3::new(1.0, 1.0, 1.0), Vec3::new(0.5, 0.7, 1.0), t)
+        }
+    }
+
     fn scatter(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit>
     {
         self.objects
@@ -242,36 +262,6 @@ impl Sphere {
         }
         // Does not hit the sphere.
         None
-    }
-}
-
-fn ray_color<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, depth: usize) -> Vec3 {
-    if depth == 0 {
-        // This is what the book does in section 8.2, but it seems like
-        // we could avoid this entirely by not using recursion.
-        return Default::default();
-    }
-    if let Some(hit) = scene.scatter(ray, 0.001, ::std::f64::INFINITY) {
-        return if let Some((attenutation, ref ray_out)) = hit.material.scatter(ray, &hit, rng) {
-            attenutation.mul_pointwise(&ray_color(scene, ray_out, rng, depth - 1))
-        } else {
-            Default::default()
-        }
-    } else {
-        let unit_dir = ray.dir().unit();
-        let t = 0.5 * (unit_dir.y() + 1.0);
-        lerp(Vec3::new(1.0, 1.0, 1.0), Vec3::new(0.5, 0.7, 1.0), t)
-    }
-}
-
-fn random_in_unit_sphere<R: Rng>(rng: &mut R) -> Vec3 {
-    let dist = Uniform::new(-1.0, 1.0);
-    loop {
-        let v = Vec3::rand_within(rng, dist);
-        let square_len = v.square_length();
-        if square_len < 1.0 {
-            return v;
-        }
     }
 }
 
@@ -449,7 +439,7 @@ fn main() {
                             let u = (i as f64 + rng.gen::<f64>()) / (image_width - 1) as f64;
                             let v = (j as f64 + rng.gen::<f64>()) / (image_height - 1) as f64;
                             let ray = camera.get_ray(&mut rng, u, v);
-                            ray_color(&scene, &ray, &mut rng, max_depth)
+                            scene.ray_color(&ray, &mut rng, max_depth)
                         });
                         let mut guard = img.lock().unwrap();
                         let r = 256. * (color_vec.x()).sqrt().klamp(0.0, 0.99);

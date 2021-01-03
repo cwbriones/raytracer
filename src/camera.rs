@@ -1,7 +1,7 @@
 use rand::Rng;
-use rand::thread_rng;
 
 use crate::ray::Ray;
+use crate::util::RandUtil;
 use crate::vec::{
     Point3,
     Vec3,
@@ -76,7 +76,7 @@ impl Camera {
     }
 
     pub fn get_ray<R: Rng>(&self, rng: &mut R, s: f64, t: f64) -> Ray {
-        let rd = self.lens_radius * random_in_unit_disk(rng);
+        let rd = self.lens_radius * rng.gen_in_unit_disk();
         let offset = self.basis.0 * rd.x() + self.basis.1 * rd.y();
         let offset_origin = self.origin - offset;
 
@@ -84,17 +84,6 @@ impl Camera {
             offset_origin,
             (self.lower_left + s * self.horizontal + t * self.vertical) - offset_origin
         )
-    }
-}
-
-fn random_in_unit_disk<R: Rng>(rng: &mut R) -> Vec3 {
-    loop {
-        let x = rng.gen_range(-1.0..1.0);
-        let y = rng.gen_range(-1.0..1.0);
-        let v = Vec3::new(x, y, 0.0);
-        if v.square_length() < 1.0 {
-            return v;
-        }
     }
 }
 

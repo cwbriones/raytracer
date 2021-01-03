@@ -22,18 +22,6 @@ impl Point3 {
     pub fn at(x: f64, y: f64, z: f64) -> Self {
         Point3(x, y, z)
     }
-
-    #[inline]
-    pub fn origin_vec(self) -> Vec3 {
-        Vec3::new(self.0, self.1, self.2)
-    }
-
-    // #[inline]
-    // pub fn x(&self) -> f64 { self.0 }
-    // #[inline]
-    // pub fn y(&self) -> f64 { self.1 }
-    // #[inline]
-    // pub fn z(&self) -> f64 { self.2 }
 }
 
 impl Default for Point3 {

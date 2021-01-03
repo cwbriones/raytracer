@@ -1,7 +1,7 @@
 use crate::ray::Ray;
 use crate::vec::{
     Point3,
-    Vec3, 
+    Vec3,
 };
 
 #[derive(Debug, Default)]
@@ -13,41 +13,66 @@ pub struct Camera {
 }
 
 pub struct CameraBuilder {
-    camera: Camera,
+    from: Point3,
+    towards: Point3,
+    aspect_ratio: f64,
+    vfov_radians: f64,
+    vup: Vec3,
 }
 
 impl Camera {
-    pub fn builder() -> CameraBuilder {
+    pub fn builder(vfov: f64, aspect_ratio: f64) -> CameraBuilder {
         CameraBuilder {
-            camera: Default::default(),
+            aspect_ratio,
+            vfov_radians: vfov.to_radians(),
+            from: Point3::at(0., 0., 0.),
+            towards: Point3::at(0., 0., 1.),
+            vup: Vec3::new(0., 1., 0.),
         }
     }
 
-    pub fn get_ray(&self, u: f64, v: f64) -> Ray {
-        let dir = (self.lower_left + u * self.horizontal + v * self.vertical).origin_vec();
+    fn new(
+        builder: CameraBuilder,
+    ) -> Camera {
+        let h = (builder.vfov_radians / 2.0).tan();
+        let viewport_height = 2.0 * h;
+        let viewport_width = builder.aspect_ratio * viewport_height;
+
+        let focal_length = 1.0;
+        
+        // Form an orthonormal basis for our camera system.
+        let w: Vec3 = (builder.from - builder.towards).unit();
+        let u = builder.vup.cross(&w).unit();
+        let v = w.cross(&u);
+
+        let origin = builder.from;
+        let horizontal = viewport_width * u;
+        let vertical = viewport_height * v;
+        let lower_left = origin - horizontal / 2.0 - vertical / 2.0 - focal_length * w;
+        Camera {
+            origin,
+            horizontal,
+            vertical,
+            lower_left
+        }
+    }
+
+    pub fn get_ray(&self, s: f64, v: f64) -> Ray {
+        let dir = (self.lower_left + s * self.horizontal + v * self.vertical) - self.origin;
         Ray::new(self.origin, dir)
     }
 }
 
 impl CameraBuilder {
-    pub fn horizontal(mut self, h: Vec3) -> Self {
-        self.camera.horizontal = h;
-        self
+    pub fn from(self, from: Point3) -> Self {
+        CameraBuilder { from, ..self }
     }
 
-    pub fn vertical(mut self, v: Vec3) -> Self {
-        self.camera.vertical = v;
-        self
-    }
-
-    pub fn origin(mut self, origin: Point3) -> Self {
-        self.camera.origin = origin;
-        self
+    pub fn towards(self, towards: Point3) -> Self {
+        CameraBuilder { towards, ..self }
     }
 
     pub fn build(self) -> Camera {
-        let mut camera = self.camera;
-        camera.lower_left = camera.origin - camera.horizontal / 2.0 - camera.vertical / 2.0 - Vec3::zhat();
-        camera
+        Camera::new(self)
     }
 }

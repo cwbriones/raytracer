@@ -88,8 +88,18 @@ struct Lambertian(Vec3);
 
 impl Material for Lambertian {
     fn scatter(&self, _: &Ray, hit: &Hit) -> Option<(Vec3, Ray)> {
+        // True lambertian reflection utilizes vectors on the unit sphere,
+        // not within it. However, the "approximation" with interior sampling
+        // is somewhat more intuitive. The difference amounts to normalizing
+        // the vector after sampling.
+        //
+        // Normalization results in a slightly darker surface since
+        // rays are more uniformly scattered.
+        //
+        // See Section 8.5.
+        //
         // FIXME: How can we pass in the current RNG?
-        let mut scatter_direction = hit.normal + random_in_unit_sphere(&mut thread_rng());
+        let mut scatter_direction = hit.normal + random_in_unit_sphere(&mut thread_rng()).unit();
 
         // Catch degenerate scatter direction
         if scatter_direction.near_zero() {
@@ -246,14 +256,6 @@ fn random_in_unit_sphere<R: Rng>(rng: &mut R) -> Vec3 {
         let v = Vec3::rand_within(rng, dist);
         let square_len = v.square_length();
         if square_len < 1.0 {
-            // True lambertian reflection utilizes vectors on the unit sphere,
-            // not within it. However, the "approximation" is somewhat more intuitive
-            // and noticeably more performant so we leave it in place.
-            //
-            // Normalization results in a slightly darker surface since
-            // rays are more uniformly scattered.
-            //
-            // See Section 8.5.
             return v;
         }
     }
@@ -348,6 +350,11 @@ fn main() {
         for worker_id in 0..threads {
             let img = img.clone();
             s.spawn(move |_| {
+                let camera = Camera::builder(20.0, ASPECT_RATIO)
+                    .from(Point3::at(-2., 2., 1.))
+                    .towards(Point3::at(0., 0., -1.))
+                    .build();
+
                 let material_ground = Rc::new(Lambertian(Vec3::new(0.8, 0.8, 0.0)));
                 let material_center = Rc::new(Lambertian(Vec3::new(0.1, 0.2, 0.5)));
                 let material_left = Rc::new(Dielectric {
@@ -374,7 +381,7 @@ fn main() {
                     )),
                     Box::new(Sphere::new(
                         Point3::at(-1.0, 0.0, -1.0),
-                        -0.4,
+                        -0.45,
                         material_left
                     )),
                     Box::new(Sphere::new(
@@ -383,12 +390,6 @@ fn main() {
                         material_right
                     )),
                 ];
-
-                let camera = Camera::builder()
-                    .origin(Default::default())
-                    .horizontal(Vec3::new(4.0, 0.0, 0.0))
-                    .vertical(Vec3::new(0.0, 2.25, 0.0))
-                    .build();
 
                 let mut rng = SmallRng::from_entropy();
                 (worker_id..(image_height as usize))

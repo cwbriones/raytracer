@@ -22,6 +22,18 @@ impl Point3 {
     pub fn at(x: f64, y: f64, z: f64) -> Self {
         Point3(x, y, z)
     }
+
+    #[inline]
+    pub fn x(&self) -> f64 { self.0 }
+    #[inline]
+    pub fn y(&self) -> f64 { self.1 }
+    #[inline]
+    pub fn z(&self) -> f64 { self.2 }
+
+    // #[inline]
+    pub fn get(&self, i: usize) -> f64 {
+        [self.0, self.1, self.2][i]
+    }
 }
 
 impl Default for Point3 {
@@ -123,6 +135,11 @@ impl Vec3 {
     pub fn near_zero(&self) -> bool {
         let s = 1e-8;
         self.0.abs() < s && self.1.abs() < s && self.2.abs() < s
+    }
+
+    // #[inline]
+    pub fn get(&self, i: usize) -> f64 {
+        [self.0, self.1, self.2][i]
     }
 }
 

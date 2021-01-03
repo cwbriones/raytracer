@@ -6,6 +6,7 @@ mod util;
 use std::time::Instant;
 use std::sync::Mutex;
 use std::sync::Arc;
+use std::rc::Rc;
 
 use camera::Camera;
 use vec::{Point3, Vec3};
@@ -179,10 +180,20 @@ fn refract(uv: &Vec3, n: &Vec3, etai_over_etat: f64) -> Vec3 {
 
 #[derive(Clone)]
 struct Scene {
-    objects: Vec<Sphere>,
+    root: BVHInnerNode,
 }
 
 impl Scene {
+    pub fn new(mut spheres: Vec<Sphere>) -> Self {
+        let root = BVHInnerNode::new(&mut spheres);
+        Scene { root }
+    }
+
+    fn scatter(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit>
+    {
+        self.root.hit(ray, t_min, t_max)
+    }
+
     pub fn ray_color<R: Rng>(&self, mut ray: Ray, rng: &mut R, max_depth: usize) -> Option<Vec3> {
         // In the book this is done recursively, but I've refactored it into an
         // explicit accumulating loop to make profiling easier.
@@ -210,15 +221,106 @@ impl Scene {
         // The ray hasn't resolved for the maximum allowed iterations,
         None
     }
+}
 
-    fn scatter(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit>
-    {
-        let mut closest: Option<Hit> = None;
-        for object in &self.objects {
-            let max = closest.as_ref().map(|h| h.t).unwrap_or(t_max);
-            closest = object.hit(ray, t_min, max).or(closest)
+#[derive(Clone)]
+struct BVHInnerNode {
+    left: Arc<BVHNode>,
+    right: Arc<BVHNode>,
+    bound: AABB,
+}
+
+enum BVHNode {
+    Inner(BVHInnerNode),
+    Sphere(Sphere),
+}
+
+impl BVHNode {
+    pub fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+        match *self {
+            Self::Inner(ref inner) => inner.hit(ray, t_min, t_max),
+            Self::Sphere(ref sphere) => sphere.hit(ray, t_min, t_max),
         }
-        closest
+    }
+
+    fn bounding_box(&self) -> Option<AABB> {
+        match *self {
+            Self::Inner(ref inner) => inner.bounding_box(),
+            Self::Sphere(ref sphere) => sphere.bounding_box(),
+        }
+    }
+}
+
+impl BVHInnerNode {
+    pub fn new(spheres: &mut [Sphere]) -> Self {
+        let axis = thread_rng().gen_range(0..=2usize);
+        let comparator = |a: &Sphere, b: &Sphere| {
+            if let (Some(bba), Some(bbb)) = (a.bounding_box(), b.bounding_box()) {
+                return bba.min.get(axis) < bbb.min.get(axis);
+            }
+            panic!("no bounding box in constructor");
+        };
+        let (left, right) = match spheres.len() {
+            1 => {
+                // Assign the single object to both sides.
+                let leaf = Arc::new(BVHNode::Sphere(spheres[0].clone()));
+                (leaf.clone(), leaf)
+            },
+            2 => {
+                // Assign based on the comparator.
+                let (idx_left, idx_right) = if comparator(&spheres[0], &spheres[1]) {
+                    (0, 1)
+                } else {
+                    (1, 0)
+                };
+                (
+                    Arc::new(BVHNode::Sphere(spheres[idx_left].clone())),
+                    Arc::new(BVHNode::Sphere(spheres[idx_right].clone()))
+                )
+            },
+            len => {
+                // Subdivide.
+                // spheres.sort_by(comparator);
+                let mid = len / 2;
+                (
+                    Arc::new(BVHNode::Inner(BVHInnerNode::new(&mut spheres[..mid]))),
+                    Arc::new(BVHNode::Inner(BVHInnerNode::new(&mut spheres[mid..])))
+                )
+            },
+        };
+        if let (Some(box_left), Some(box_right)) = (left.bounding_box(), right.bounding_box()) {
+            let bound = box_left.surrounding(box_right);
+            return BVHInnerNode { left, right, bound };
+        }
+        panic!("unbounded object in BVHNode::new!");
+    }
+
+    pub fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+        if !self.bound.hit(ray, t_min, t_max) {
+            return None
+        }
+        let hit_left = self.left.hit(ray, t_min, t_max);
+        let hit_right = self.right.hit(ray, t_min, t_max);
+        // Can we clean this up?
+        // It's simply "return the closest hit"
+        // let t_left = hit_left.as_ref().map(|h| h.t).unwrap_or(f64::INFINITY);
+        // let t_right = hit_right.as_ref().map(|h| h.t).unwrap_or(f64::INFINITY);
+        // if t_left < t_right {
+        //     hit_left
+        // } else {
+        //     hit_right
+        // }
+        match (hit_left, hit_right) {
+            (None, None) => None,
+            (hit @ Some(_), None) => hit,
+            (None, hit @ Some(_)) => hit,
+            (Some(a), Some(b)) if a.t < b.t => Some(a),
+            (_, Some(b)) => Some(b),
+        }
+    }
+
+    pub fn bounding_box(&self) -> Option<AABB> {
+        Some(self.bound.clone())
     }
 }
 
@@ -233,9 +335,7 @@ impl Sphere {
     fn new(center: Point3, radius: f64, material: Material) -> Self {
         Sphere { center, radius, material }
     }
-}
 
-impl Sphere {
     fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
 
         let oc = ray.origin() - self.center;
@@ -272,6 +372,71 @@ impl Sphere {
         }
         // Does not hit the sphere.
         None
+    }
+
+    fn bounding_box(&self) -> Option<AABB> {
+        let min = self.center - Vec3::new(self.radius, self.radius, self.radius);
+        let max = self.center + Vec3::new(self.radius, self.radius, self.radius);
+        Some(AABB::new(min, max))
+    }
+}
+
+#[derive(Clone)]
+struct AABB {
+    min: Point3,
+    max: Point3,
+}
+
+impl AABB {
+    pub fn new(min: Point3, max: Point3) -> Self {
+        AABB { min, max }
+    }
+
+    pub fn hit(&self, ray: &Ray, mut t_min: f64, mut t_max: f64) -> bool {
+        for a in 0..3 {
+            let inv_d = ray.dir().get(a).recip();
+            let mut t0 = (self.min.get(a) - ray.origin().get(a)) * inv_d;
+            let mut t1 = (self.max.get(a) - ray.origin().get(a)) * inv_d;
+            if inv_d < 0.0 {
+                ::std::mem::swap(&mut t0, &mut t1);
+            }
+            t_min = if t0 > t_min { t0 } else { t_min };
+            t_max = if t1 < t_max { t1 } else { t_max };
+            if t_max < t_min {
+                return false;
+            }
+        }
+        true
+        // for a in 0..3 {
+        //     let a1 = (self.min.get(a) - ray.origin().get(a)) / ray.dir().get(a);
+        //     let a2 = (self.max.get(a) - ray.origin().get(a)) / ray.dir().get(a);
+        //
+        //     let t_min = a1.min(a2).max(t_min);
+        //     let t_max = a1.max(a2).min(t_max);
+        //
+        //     if t_max <= t_min {
+        //         return false
+        //     }
+        // }
+        // true
+    }
+
+    pub fn bounding_box(&self) -> Option<AABB> {
+        Some(self.clone())
+    }
+
+    pub fn surrounding(&self, other: AABB) -> AABB {
+        let min = Point3::at(
+            self.min.x().min(other.min.x()),
+            self.min.y().min(other.min.y()),
+            self.min.z().min(other.min.z()),
+        );
+        let max = Point3::at(
+            self.max.x().max(other.max.x()),
+            self.max.y().max(other.max.y()),
+            self.max.z().max(other.max.z()),
+        );
+        AABB { min, max }
     }
 }
 
@@ -404,7 +569,7 @@ fn random_scene() -> Scene {
         material3,
     ));
 
-    Scene { objects }
+    Scene::new(objects)
 }
 
 fn main() {

@@ -120,6 +120,17 @@ struct Dielectric {
     refractive_index: f64,
 }
 
+impl Dielectric {
+    fn reflectance(cosine: f64, refractive_index: f64) -> f64 {
+        // Use Schlick's approximation for reflectance.
+        //
+        // https://en.wikipedia.org/wiki/Schlick%27s_approximation
+        let mut r0 = (1.0 - refractive_index) / (1.0 + refractive_index);
+        r0 = r0 * r0;
+        r0 + (1.0 - r0) * (1.0 - cosine).powi(5)
+    }
+}
+
 impl Material for Dielectric {
     fn scatter(&self, ray: &Ray, hit: &Hit) -> Option<(Vec3, Ray)> {
         let refraction_ratio = if hit.front_face {
@@ -128,8 +139,20 @@ impl Material for Dielectric {
             self.refractive_index
         };
         let unit_dir = ray.dir().unit();
-        let refracted = refract(&unit_dir, &hit.normal, refraction_ratio);
-        Some((self.albedo, Ray::new(hit.point, refracted)))
+        let cos_theta = unit_dir
+            .negate()
+            .dot(&hit.normal)
+            .min(1.0);
+        let sin_theta = (1.0 - cos_theta*cos_theta).sqrt();
+        let cannot_refract = refraction_ratio * sin_theta > 1.0;
+        let scatter_dir = if cannot_refract || Dielectric::reflectance(cos_theta, refraction_ratio) > thread_rng().gen::<f64>() {
+            // Refraction impossible, must reflect.
+            reflect(&unit_dir, &hit.normal)
+        } else {
+            // Refract.
+            refract(&unit_dir, &hit.normal, refraction_ratio)
+        };
+        Some((self.albedo, Ray::new(hit.point, scatter_dir)))
     }
 }
 
@@ -326,15 +349,12 @@ fn main() {
             let img = img.clone();
             s.spawn(move |_| {
                 let material_ground = Rc::new(Lambertian(Vec3::new(0.8, 0.8, 0.0)));
-                let material_center = Rc::new(Dielectric {
-                    albedo: Vec3::new(1.0, 1.0, 1.0),
-                    refractive_index: 1.5,
-                });
+                let material_center = Rc::new(Lambertian(Vec3::new(0.1, 0.2, 0.5)));
                 let material_left = Rc::new(Dielectric {
                     albedo: Vec3::new(1.0, 1.0, 1.0),
                     refractive_index: 1.5,
                 });
-                let material_right = Rc::new(Metal(Vec3::new(0.8, 0.6, 0.2), 1.0));
+                let material_right = Rc::new(Metal(Vec3::new(0.8, 0.6, 0.2), 0.0));
 
                 let world: Vec<Box<dyn Hittable>> = vec![
                     Box::new(Sphere::new(
@@ -350,6 +370,11 @@ fn main() {
                     Box::new(Sphere::new(
                         Point3::at(-1.0, 0.0, -1.0),
                         0.5,
+                        material_left.clone()
+                    )),
+                    Box::new(Sphere::new(
+                        Point3::at(-1.0, 0.0, -1.0),
+                        -0.4,
                         material_left
                     )),
                     Box::new(Sphere::new(

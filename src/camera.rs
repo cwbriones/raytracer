@@ -75,8 +75,8 @@ impl Camera {
         }
     }
 
-    pub fn get_ray(&self, s: f64, t: f64) -> Ray {
-        let rd = self.lens_radius * random_in_unit_disk();
+    pub fn get_ray<R: Rng>(&self, rng: &mut R, s: f64, t: f64) -> Ray {
+        let rd = self.lens_radius * random_in_unit_disk(rng);
         let offset = self.basis.0 * rd.x() + self.basis.1 * rd.y();
         let offset_origin = self.origin - offset;
 
@@ -87,11 +87,10 @@ impl Camera {
     }
 }
 
-fn random_in_unit_disk() -> Vec3 {
-    let mut rand = thread_rng();
+fn random_in_unit_disk<R: Rng>(rng: &mut R) -> Vec3 {
     loop {
-        let x = rand.gen_range(-1.0..1.0);
-        let y = rand.gen_range(-1.0..1.0);
+        let x = rng.gen_range(-1.0..1.0);
+        let y = rng.gen_range(-1.0..1.0);
         let v = Vec3::new(x, y, 0.0);
         if v.square_length() < 1.0 {
             return v;

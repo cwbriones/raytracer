@@ -5,7 +5,6 @@ mod camera;
 use std::time::Instant;
 use std::sync::Mutex;
 use std::sync::Arc;
-use std::rc::Rc;
 
 use argh::FromArgs;
 use camera::Camera;
@@ -19,38 +18,17 @@ use rand::distributions::Uniform;
 
 use image::{self, ImageBuffer};
 
-#[derive(Default)]
-pub struct Color {
-    r: f64,
-    g: f64,
-    b: f64,
-}
-
-impl Color {
-    pub fn new(r: f64, g: f64, b: f64) -> Self {
-        Color{r, g, b}
-    }
-
-    pub fn write(&self) {
-        let ir = (255.999 * self.r) as usize;
-        let ig = (255.999 * self.g) as usize;
-        let ib = (255.999 * self.b) as usize;
-
-        println!("{} {} {}", ir, ig, ib);
-    }
-}
-
 #[derive(Clone)]
 struct Hit {
     pub point: Point3,
     pub normal: Vec3,
     pub t: f64,
     pub front_face: bool,
-    pub material: Rc<dyn Material>,
+    pub material: Material,
 }
 
 impl Hit {
-    pub fn new(ray: &Ray, t: f64, outward_normal: Vec3, material: Rc<dyn Material>) -> Self {
+    pub fn new(ray: &Ray, t: f64, outward_normal: Vec3, material: Material) -> Self {
         let point = ray.at(t);
         let front_face = ray.dir().dot(&outward_normal) < 0.0;
         let normal = if front_face { outward_normal } else { outward_normal.negate() };
@@ -64,108 +42,126 @@ impl Hit {
     }
 }
 
-trait Hittable {
-    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit>;
-}
-
-fn scatter<'a, I>(items: I, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit>
-    where
-        I: IntoIterator,
-        <I as IntoIterator>::Item: AsRef<dyn Hittable>,
-{
-    items.into_iter()
-        .fold(None, |closest, h| {
-            let max = closest.as_ref().map(|h| h.t).unwrap_or(t_max);
-            h.as_ref().hit(ray, t_min, max).or(closest)
-        })
-}
-
-trait Material {
-    fn scatter(&self, ray: &Ray, hit: &Hit) -> Option<(Vec3, Ray)>;
-}
-
-struct Lambertian(Vec3);
-
-impl Material for Lambertian {
-    fn scatter(&self, _: &Ray, hit: &Hit) -> Option<(Vec3, Ray)> {
-        // True lambertian reflection utilizes vectors on the unit sphere,
-        // not within it. However, the "approximation" with interior sampling
-        // is somewhat more intuitive. The difference amounts to normalizing
-        // the vector after sampling.
-        //
-        // Normalization results in a slightly darker surface since
-        // rays are more uniformly scattered.
-        //
-        // See Section 8.5.
-        //
-        // FIXME: How can we pass in the current RNG?
-        let mut scatter_direction = hit.normal + random_in_unit_sphere(&mut thread_rng()).unit();
-
-        // Catch degenerate scatter direction
-        if scatter_direction.near_zero() {
-            scatter_direction = hit.normal;
-        }
-
-        let scattered = Ray::new(hit.point, scatter_direction);
-        Some((self.0, scattered))
-    }
-}
-
-struct Metal(Vec3, f64);
-
-impl Material for Metal {
-    fn scatter(&self, ray: &Ray, hit: &Hit) -> Option<(Vec3, Ray)> {
-        let reflected = reflect(&ray.dir(), &hit.normal);
-        let scattered = Ray::new(hit.point, reflected + self.1 * random_in_unit_sphere(&mut thread_rng()));
-        if scattered.dir().dot(&hit.normal) > 1e-8 {
-            Some((self.0, Ray::new(hit.point, scattered.dir())))
-        } else {
-            None
-        }
-    }
-}
-
-struct Dielectric {
+#[derive(Clone)]
+struct Material {
     albedo: Vec3,
-    refractive_index: f64,
+    kind: MaterialKind,
 }
 
-impl Dielectric {
-    fn reflectance(cosine: f64, refractive_index: f64) -> f64 {
-        // Use Schlick's approximation for reflectance.
-        //
-        // https://en.wikipedia.org/wiki/Schlick%27s_approximation
-        let mut r0 = (1.0 - refractive_index) / (1.0 + refractive_index);
-        r0 = r0 * r0;
-        r0 + (1.0 - r0) * (1.0 - cosine).powi(5)
+impl Material {
+    pub fn lambertian(albedo: Vec3) -> Self {
+        Material {
+            albedo,
+            kind: MaterialKind::Lambertian,
+        }
+    }
+
+    pub fn metal(albedo: Vec3, fuzz: f64) -> Self {
+        Material {
+            albedo,
+            kind: MaterialKind::Metal(fuzz),
+        }
+    }
+
+    pub fn dielectric(refractive_index: f64) -> Self {
+        Material {
+            albedo: Vec3::new(1.0, 1.0, 1.0),
+            kind: MaterialKind::Dielectric(refractive_index),
+        }
+    }
+
+    pub fn scatter<R: Rng>(&self, ray: &Ray, hit: &Hit, rng: &mut R) -> Option<(Vec3, Ray)> {
+        self.kind.scatter(ray, hit, rng).map(|r| (self.albedo, r))
     }
 }
 
-impl Material for Dielectric {
-    fn scatter(&self, ray: &Ray, hit: &Hit) -> Option<(Vec3, Ray)> {
-        let refraction_ratio = if hit.front_face {
-            1.0 / self.refractive_index
-        } else {
-            self.refractive_index
-        };
-        let unit_dir = ray.dir().unit();
-        let cos_theta = unit_dir
-            .negate()
-            .dot(&hit.normal)
-            .min(1.0);
-        let sin_theta = (1.0 - cos_theta*cos_theta).sqrt();
-        let cannot_refract = refraction_ratio * sin_theta > 1.0;
-        let scatter_dir = if cannot_refract || Dielectric::reflectance(cos_theta, refraction_ratio) > thread_rng().gen::<f64>() {
-            // Refraction impossible, must reflect.
-            reflect(&unit_dir, &hit.normal)
-        } else {
-            // Refract.
-            refract(&unit_dir, &hit.normal, refraction_ratio)
-        };
-        Some((self.albedo, Ray::new(hit.point, scatter_dir)))
+#[derive(Clone)]
+enum MaterialKind {
+    Lambertian,
+    Metal(f64),
+    Dielectric(f64),
+}
+
+impl MaterialKind {
+    fn scatter<R: Rng>(&self, ray: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
+        match *self {
+            Self::Lambertian => {
+                lambertian_scatter(ray, hit, rng)
+            },
+            Self::Metal(fuzz) => {
+                metallic_scatter(fuzz, ray, hit, rng)
+            },
+            Self::Dielectric(refractive_index) => {
+                dielectric_scatter(refractive_index, ray, hit, rng)
+            },
+        }
     }
 }
 
+fn lambertian_scatter<R: Rng>(_: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
+    // True lambertian reflection utilizes vectors on the unit sphere,
+    // not within it. However, the "approximation" with interior sampling
+    // is somewhat more intuitive. The difference amounts to normalizing
+    // the vector after sampling.
+    //
+    // Normalization results in a slightly darker surface since
+    // rays are more uniformly scattered.
+    //
+    // See Section 8.5.
+    //
+    // FIXME: How can we pass in the current RNG?
+    let mut scatter_direction = hit.normal + random_in_unit_sphere(rng).unit();
+
+    // Catch degenerate scatter direction
+    if scatter_direction.near_zero() {
+        scatter_direction = hit.normal;
+    }
+
+    let scattered = Ray::new(hit.point, scatter_direction);
+    Some(scattered)
+}
+
+fn metallic_scatter<R: Rng>(fuzz: f64, ray: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
+    let reflected = reflect(&ray.dir(), &hit.normal);
+    let scattered = Ray::new(hit.point, reflected + fuzz * random_in_unit_sphere(rng));
+    if scattered.dir().dot(&hit.normal) > 1e-8 {
+        Some(Ray::new(hit.point, scattered.dir()))
+    } else {
+        None
+    }
+}
+
+fn dielectric_scatter<R: Rng>(refractive_index: f64, ray: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
+    let refraction_ratio = if hit.front_face {
+        1.0 / refractive_index
+    } else {
+        refractive_index
+    };
+    let unit_dir = ray.dir().unit();
+    let cos_theta = unit_dir
+        .negate()
+        .dot(&hit.normal)
+        .min(1.0);
+    let sin_theta = (1.0 - cos_theta*cos_theta).sqrt();
+    let cannot_refract = refraction_ratio * sin_theta > 1.0;
+    let scatter_dir = if cannot_refract || reflectance(cos_theta, refraction_ratio) > rng.gen::<f64>() {
+        // Refraction impossible, must reflect.
+        reflect(&unit_dir, &hit.normal)
+    } else {
+        // Refract.
+        refract(&unit_dir, &hit.normal, refraction_ratio)
+    };
+    Some(Ray::new(hit.point, scatter_dir))
+}
+
+fn reflectance(cosine: f64, refractive_index: f64) -> f64 {
+    // Use Schlick's approximation for reflectance.
+    //
+    // https://en.wikipedia.org/wiki/Schlick%27s_approximation
+    let mut r0 = (1.0 - refractive_index) / (1.0 + refractive_index);
+    r0 = r0 * r0;
+    r0 + (1.0 - r0) * (1.0 - cosine).powi(5)
+}
 
 /// Reflect an inbound ray v across a surface given the surface normal n.
 fn reflect(v: &Vec3, n: &Vec3) -> Vec3 {
@@ -181,19 +177,36 @@ fn refract(uv: &Vec3, n: &Vec3, etai_over_etat: f64) -> Vec3 {
 }
 
 #[derive(Clone)]
+struct Scene {
+    objects: Vec<Sphere>,
+}
+
+impl Scene {
+    fn scatter(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit>
+    {
+        self.objects
+            .iter()
+            .fold(None, |closest, h| {
+                let max = closest.as_ref().map(|h| h.t).unwrap_or(t_max);
+                h.hit(ray, t_min, max).or(closest)
+            })
+    }
+}
+
+#[derive(Clone)]
 struct Sphere {
     center: Point3,
     radius: f64,
-    material: Rc<dyn Material>,
+    material: Material,
 }
 
 impl Sphere {
-    fn new(center: Point3, radius: f64, material: Rc<dyn Material>) -> Self {
+    fn new(center: Point3, radius: f64, material: Material) -> Self {
         Sphere { center, radius, material }
     }
 }
 
-impl Hittable for Sphere {
+impl Sphere {
     fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
         let oc = ray.origin() - self.center;
         let a = ray.dir().square_length();
@@ -232,15 +245,15 @@ impl Hittable for Sphere {
     }
 }
 
-fn ray_color<R: Rng>(ray: &Ray, world: &[Box<dyn Hittable>], rng: &mut R, depth: usize) -> Vec3 {
+fn ray_color<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, depth: usize) -> Vec3 {
     if depth == 0 {
         // This is what the book does in section 8.2, but it seems like
         // we could avoid this entirely by not using recursion.
         return Default::default();
     }
-    if let Some(hit) = scatter(world, ray, 0.001, ::std::f64::INFINITY) {
-        return if let Some((attenutation, ref ray_out)) = hit.material.scatter(ray, &hit) {
-            attenutation.mul_pointwise(&ray_color(ray_out, world, rng, depth - 1))
+    if let Some(hit) = scene.scatter(ray, 0.001, ::std::f64::INFINITY) {
+        return if let Some((attenutation, ref ray_out)) = hit.material.scatter(ray, &hit, rng) {
+            attenutation.mul_pointwise(&ray_color(scene, ray_out, rng, depth - 1))
         } else {
             Default::default()
         }
@@ -334,17 +347,17 @@ impl TracerConfig {
     fn default_output() -> String { "output.png".into() }
 }
 
-fn random_scene(seed: [u8; 32]) -> Vec<Box<dyn Hittable>> {
-    let mut world: Vec<Box<dyn Hittable>> = Vec::new();
+fn random_scene() -> Scene {
+    let mut objects = Vec::new();
 
-    let ground_material = Rc::new(Lambertian(Vec3::new(0.5, 0.5, 0.5)));
-    world.push(Box::new(Sphere::new(
+    let ground_material = Material::lambertian(Vec3::new(0.5, 0.5, 0.5));
+    objects.push(Sphere::new(
         Point3::at(0., -1000., 0.),
         1000.,
         ground_material,
-    )));
+    ));
 
-    let mut rng = SmallRng::from_seed(seed);
+    let mut rng = thread_rng();
     for a in -11..11 {
         for b in -11..11 {
             let choose_material = rng.gen::<f64>();
@@ -354,48 +367,44 @@ fn random_scene(seed: [u8; 32]) -> Vec<Box<dyn Hittable>> {
                 b as f64 + 0.9 * rng.gen::<f64>(),
             );
             if (center - Point3::at(4.0, 0.2, 0.0)).length() > 0.9 {
-                let material: Rc<dyn Material>;
+                let material: Material;
                 if choose_material < 0.8 {
                     // diffuse
                     let albedo = rng.gen::<Vec3>().mul_pointwise(&rng.gen::<Vec3>());
-                    material = Rc::new(Lambertian(albedo));
+                    material = Material::lambertian(albedo);
                 } else if choose_material < 0.95 {
                     // metal
                     let albedo = Vec3::rand_within(&mut rng, Uniform::new(0.5, 1.0));
                     let fuzz = rng.gen_range(0.0..0.5);
-                    material = Rc::new(Metal(albedo, fuzz));
+                    material = Material::metal(albedo, fuzz);
                 } else {
                     // glass
-                    let albedo = Vec3::new(0.0, 0.0, 0.0);
-                    material = Rc::new(Dielectric{albedo, refractive_index: 1.5});
+                    material = Material::dielectric(1.5);
                 }
-                world.push(Box::new(Sphere::new(center, 0.2, material)));
+                objects.push(Sphere::new(center, 0.2, material));
             }
         }
     }
-    let material1 = Rc::new(Dielectric {
-        albedo: Vec3::new(0.0, 0.0, 0.0),
-        refractive_index: 1.5,
-    });
-    world.push(Box::new(Sphere::new(
+    let material1 = Material::dielectric(1.5);
+    objects.push(Sphere::new(
         Point3::at(0., 1., 0.),
         1.0,
         material1,
-    )));
-    let material2 = Rc::new(Lambertian(Vec3::new(0.4, 0.2, 0.1)));
-    world.push(Box::new(Sphere::new(
+    ));
+    let material2 = Material::lambertian(Vec3::new(0.4, 0.2, 0.1));
+    objects.push(Sphere::new(
         Point3::at(-4., 1., 0.),
         1.0,
         material2,
-    )));
-    let material3 = Rc::new(Metal(Vec3::new(0.7, 0.6, 0.5), 0.0));
-    world.push(Box::new(Sphere::new(
+    ));
+    let material3 = Material::metal(Vec3::new(0.7, 0.6, 0.5), 0.0);
+    objects.push(Sphere::new(
         Point3::at(4., 1., 0.),
         1.0,
         material3,
-    )));
+    ));
 
-    world
+    Scene { objects }
 }
 
 fn main() {
@@ -413,17 +422,17 @@ fn main() {
 
     // This is stupid but as a limitation of using trait objects, I can't create the scene
     // once and send it to all worker threads.
-    // 
+    //
     // Instead we generate the scene in each thread, in which case we need to ensure
     // the seed is identical.
-    let seed = thread_rng().gen();
+    let scene = random_scene();
 
     let img = crossbeam::scope(|s| {
         let img = Arc::new(Mutex::new(ImageBuffer::new(image_width, image_height)));
         for worker_id in 0..threads {
+            let scene = scene.clone();
             let img = img.clone();
             s.spawn(move |_| {
-                let world: Vec<Box<dyn Hittable>> = random_scene(seed);
                 let camera = Camera::builder(20.0, ASPECT_RATIO)
                     .from(Point3::at(13., 2., 3.))
                     .towards(Point3::at(0., 0., 0.))
@@ -439,8 +448,8 @@ fn main() {
                         let color_vec = average(samples_per_pixel, || {
                             let u = (i as f64 + rng.gen::<f64>()) / (image_width - 1) as f64;
                             let v = (j as f64 + rng.gen::<f64>()) / (image_height - 1) as f64;
-                            let ray = camera.get_ray(u, v);
-                            ray_color(&ray, &world.as_slice(), &mut rng, max_depth)
+                            let ray = camera.get_ray(&mut rng, u, v);
+                            ray_color(&scene, &ray, &mut rng, max_depth)
                         });
                         let mut guard = img.lock().unwrap();
                         let r = 256. * (color_vec.x()).sqrt().klamp(0.0, 0.99);

@@ -183,33 +183,42 @@ struct Scene {
 }
 
 impl Scene {
-    pub fn ray_color<R: Rng>(&self, ray: &Ray, rng: &mut R, depth: usize) -> Vec3 {
-        if depth == 0 {
-            // This is what the book does in section 8.2, but it seems like
-            // we could avoid this entirely by not using recursion.
-            return Default::default();
-        }
-        if let Some(hit) = self.scatter(ray, 0.001, ::std::f64::INFINITY) {
-            return if let Some((attenutation, ref ray_out)) = hit.material.scatter(ray, &hit, rng) {
-                attenutation.mul_pointwise(&self.ray_color(ray_out, rng, depth - 1))
+    pub fn ray_color<R: Rng>(&self, mut ray: Ray, rng: &mut R, max_depth: usize) -> Option<Vec3> {
+        // In the book this is done recursively, but I've refactored it into an
+        // explicit accumulating loop to make profiling easier.
+        //
+        // This prevents additional tracing iterations from adding to the stack frame.
+        let mut attenuation = Vec3::new(1.0, 1.0, 1.0);
+        for _ in 0..max_depth {
+            if let Some(hit) = self.scatter(&ray, 0.001, ::std::f64::INFINITY) {
+                if let Some((cur_attenuation, ray_out)) = hit.material.scatter(&ray, &hit, rng) {
+                    // The ray was scattered in a different direction. Continue following it.
+                    attenuation = attenuation.mul_pointwise(&cur_attenuation);
+                    ray = ray_out;
+                } else {
+                    // The ray was completely absorbed.
+                    return None;
+                }
             } else {
-                Default::default()
+                // The ray escaped after bouncing.
+                // Multiply the color with the sky.
+                let unit_dir = ray.dir().unit();
+                let t = 0.5 * (unit_dir.y() + 1.0);
+                return Some(attenuation.mul_pointwise(&lerp(Vec3::new(1.0, 1.0, 1.0), Vec3::new(0.5, 0.7, 1.0), t)));
             }
-        } else {
-            let unit_dir = ray.dir().unit();
-            let t = 0.5 * (unit_dir.y() + 1.0);
-            lerp(Vec3::new(1.0, 1.0, 1.0), Vec3::new(0.5, 0.7, 1.0), t)
         }
+        // The ray hasn't resolved for the maximum allowed iterations,
+        None
     }
 
     fn scatter(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit>
     {
-        self.objects
-            .iter()
-            .fold(None, |closest, h| {
-                let max = closest.as_ref().map(|h| h.t).unwrap_or(t_max);
-                h.hit(ray, t_min, max).or(closest)
-            })
+        let mut closest: Option<Hit> = None;
+        for object in &self.objects {
+            let max = closest.as_ref().map(|h| h.t).unwrap_or(t_max);
+            closest = object.hit(ray, t_min, max).or(closest)
+        }
+        closest
     }
 }
 
@@ -228,6 +237,7 @@ impl Sphere {
 
 impl Sphere {
     fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+
         let oc = ray.origin() - self.center;
         let a = ray.dir().square_length();
         let half_b = oc.dot(&ray.dir());
@@ -439,7 +449,7 @@ fn main() {
                             let u = (i as f64 + rng.gen::<f64>()) / (image_width - 1) as f64;
                             let v = (j as f64 + rng.gen::<f64>()) / (image_height - 1) as f64;
                             let ray = camera.get_ray(&mut rng, u, v);
-                            scene.ray_color(&ray, &mut rng, max_depth)
+                            scene.ray_color(ray, &mut rng, max_depth).unwrap_or_else(Default::default)
                         });
                         let mut guard = img.lock().unwrap();
                         let r = 256. * (color_vec.x()).sqrt().klamp(0.0, 0.99);

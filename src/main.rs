@@ -351,8 +351,9 @@ fn main() {
             let img = img.clone();
             s.spawn(move |_| {
                 let camera = Camera::builder(20.0, ASPECT_RATIO)
-                    .from(Point3::at(-2., 2., 1.))
+                    .from(Point3::at(3., 3., 2.))
                     .towards(Point3::at(0., 0., -1.))
+                    .aperture(1.2)
                     .build();
 
                 let material_ground = Rc::new(Lambertian(Vec3::new(0.8, 0.8, 0.0)));

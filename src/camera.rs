@@ -24,6 +24,7 @@ pub struct CameraBuilder {
     vfov_radians: f64,
     vup: Vec3,
     aperture: f64,
+    focus_dist: Option<f64>,
 }
 
 impl Camera {
@@ -31,10 +32,11 @@ impl Camera {
         CameraBuilder {
             aspect_ratio,
             vfov_radians: vfov.to_radians(),
-            from: Point3::at(0., 0., 0.),
-            towards: Point3::at(0., 0., 1.),
+            from: Point3::at(13., 2., 3.),
+            towards: Point3::at(0., 0., 0.),
             vup: Vec3::new(0., 1., 0.),
             aperture: 5.0,
+            focus_dist: None,
         }
     }
 
@@ -49,7 +51,9 @@ impl Camera {
         //
         // This is not the same as the focal length.
         // That is the distance between the projection and image planes.
-        let focus_dist = (builder.from - builder.towards).length();
+        let focus_dist = builder.focus_dist.unwrap_or_else(|| {
+            (builder.from - builder.towards).length()
+        });
         
         // Form an orthonormal basis for our camera system.
         let w = (builder.from - builder.towards).unit();
@@ -102,6 +106,10 @@ impl CameraBuilder {
 
     pub fn towards(self, towards: Point3) -> Self {
         CameraBuilder { towards, ..self }
+    }
+
+    pub fn focus_dist(self, focus_dist: f64) -> Self {
+        CameraBuilder { focus_dist: Some(focus_dist), ..self }
     }
 
     pub fn aperture(self, aperture: f64) -> Self {

@@ -180,6 +180,7 @@ fn refract(uv: &Vec3, n: &Vec3, etai_over_etat: f64) -> Vec3 {
     r_out_perp + r_out_parallel
 }
 
+#[derive(Clone)]
 struct Sphere {
     center: Point3,
     radius: f64,
@@ -333,10 +334,74 @@ impl TracerConfig {
     fn default_output() -> String { "output.png".into() }
 }
 
+fn random_scene(seed: [u8; 32]) -> Vec<Box<dyn Hittable>> {
+    let mut world: Vec<Box<dyn Hittable>> = Vec::new();
+
+    let ground_material = Rc::new(Lambertian(Vec3::new(0.5, 0.5, 0.5)));
+    world.push(Box::new(Sphere::new(
+        Point3::at(0., -1000., 0.),
+        1000.,
+        ground_material,
+    )));
+
+    let mut rng = SmallRng::from_seed(seed);
+    for a in -11..11 {
+        for b in -11..11 {
+            let choose_material = rng.gen::<f64>();
+            let center = Point3::at(
+                a as f64 + 0.9 * rng.gen::<f64>(),
+                0.2,
+                b as f64 + 0.9 * rng.gen::<f64>(),
+            );
+            if (center - Point3::at(4.0, 0.2, 0.0)).length() > 0.9 {
+                let material: Rc<dyn Material>;
+                if choose_material < 0.8 {
+                    // diffuse
+                    let albedo = rng.gen::<Vec3>().mul_pointwise(&rng.gen::<Vec3>());
+                    material = Rc::new(Lambertian(albedo));
+                } else if choose_material < 0.95 {
+                    // metal
+                    let albedo = Vec3::rand_within(&mut rng, Uniform::new(0.5, 1.0));
+                    let fuzz = rng.gen_range(0.0..0.5);
+                    material = Rc::new(Metal(albedo, fuzz));
+                } else {
+                    // glass
+                    let albedo = Vec3::new(0.0, 0.0, 0.0);
+                    material = Rc::new(Dielectric{albedo, refractive_index: 1.5});
+                }
+                world.push(Box::new(Sphere::new(center, 0.2, material)));
+            }
+        }
+    }
+    let material1 = Rc::new(Dielectric {
+        albedo: Vec3::new(0.0, 0.0, 0.0),
+        refractive_index: 1.5,
+    });
+    world.push(Box::new(Sphere::new(
+        Point3::at(0., 1., 0.),
+        1.0,
+        material1,
+    )));
+    let material2 = Rc::new(Lambertian(Vec3::new(0.4, 0.2, 0.1)));
+    world.push(Box::new(Sphere::new(
+        Point3::at(-4., 1., 0.),
+        1.0,
+        material2,
+    )));
+    let material3 = Rc::new(Metal(Vec3::new(0.7, 0.6, 0.5), 0.0));
+    world.push(Box::new(Sphere::new(
+        Point3::at(4., 1., 0.),
+        1.0,
+        material3,
+    )));
+
+    world
+}
+
 fn main() {
     let config = argh::from_env::<TracerConfig>();
 
-    const ASPECT_RATIO: f64 = 16.0 / 9.0;
+    const ASPECT_RATIO: f64 = 3.0 / 2.0;
     let image_width = config.width;
     let threads = config.threads;
     let image_height = (image_width as f64 / ASPECT_RATIO) as u32;
@@ -345,52 +410,26 @@ fn main() {
     let max_depth = 50;
 
     let start = Instant::now();
+
+    // This is stupid but as a limitation of using trait objects, I can't create the scene
+    // once and send it to all worker threads.
+    // 
+    // Instead we generate the scene in each thread, in which case we need to ensure
+    // the seed is identical.
+    let seed = thread_rng().gen();
+
     let img = crossbeam::scope(|s| {
         let img = Arc::new(Mutex::new(ImageBuffer::new(image_width, image_height)));
         for worker_id in 0..threads {
             let img = img.clone();
             s.spawn(move |_| {
+                let world: Vec<Box<dyn Hittable>> = random_scene(seed);
                 let camera = Camera::builder(20.0, ASPECT_RATIO)
-                    .from(Point3::at(3., 3., 2.))
-                    .towards(Point3::at(0., 0., -1.))
-                    .aperture(1.2)
+                    .from(Point3::at(13., 2., 3.))
+                    .towards(Point3::at(0., 0., 0.))
+                    .focus_dist(10.0)
+                    .aperture(0.1)
                     .build();
-
-                let material_ground = Rc::new(Lambertian(Vec3::new(0.8, 0.8, 0.0)));
-                let material_center = Rc::new(Lambertian(Vec3::new(0.1, 0.2, 0.5)));
-                let material_left = Rc::new(Dielectric {
-                    albedo: Vec3::new(1.0, 1.0, 1.0),
-                    refractive_index: 1.5,
-                });
-                let material_right = Rc::new(Metal(Vec3::new(0.8, 0.6, 0.2), 0.0));
-
-                let world: Vec<Box<dyn Hittable>> = vec![
-                    Box::new(Sphere::new(
-                        Point3::at(0.0, -100.5, -1.0),
-                        100.0,
-                        material_ground
-                    )),
-                    Box::new(Sphere::new(
-                        Point3::at(0.0, 0.0, -1.0),
-                        0.5,
-                        material_center
-                    )),
-                    Box::new(Sphere::new(
-                        Point3::at(-1.0, 0.0, -1.0),
-                        0.5,
-                        material_left.clone()
-                    )),
-                    Box::new(Sphere::new(
-                        Point3::at(-1.0, 0.0, -1.0),
-                        -0.45,
-                        material_left
-                    )),
-                    Box::new(Sphere::new(
-                        Point3::at(1.0, 0.0, -1.0),
-                        0.5,
-                        material_right
-                    )),
-                ];
 
                 let mut rng = SmallRng::from_entropy();
                 (worker_id..(image_height as usize))

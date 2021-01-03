@@ -375,15 +375,15 @@ fn random_scene() -> Scene {
             }
         }
     }
-    let material1 = Material::dielectric(1.5);
+    let material1 = Material::lambertian(Vec3::new(0.05, 0.2, 0.6));
     objects.push(Sphere::new(
-        Point3::at(0., 1., 0.),
+        Point3::at(-4., 1., 0.),
         1.0,
         material1,
     ));
-    let material2 = Material::lambertian(Vec3::new(0.4, 0.2, 0.1));
+    let material2 = Material::dielectric(1.5);
     objects.push(Sphere::new(
-        Point3::at(-4., 1., 0.),
+        Point3::at(0., 1., 0.),
         1.0,
         material2,
     ));

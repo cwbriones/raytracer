@@ -261,27 +261,27 @@ impl BVHInnerNode {
             let bbb = b.bounding_box();
             bba.min.get(axis).partial_cmp(&bbb.min.get(axis)).unwrap()
         };
-        let (left, right) = match spheres.len() {
-            1 => {
+        let (left, right) = match spheres {
+            [sphere] => {
                 // Assign the single object to both sides.
-                let leaf = Arc::new(BVHNode::Sphere(spheres[0].clone()));
+                let leaf = Arc::new(BVHNode::Sphere(sphere.clone()));
                 (leaf.clone(), leaf)
             },
-            2 => {
+            [a, b] => {
                 // Assign based on the comparator.
-                let (idx_left, idx_right) = match comparator(&spheres[0], &spheres[1]) {
-                    CmpOrdering::Greater => (1, 0),
-                    _ => (0, 1)
+                let (sphere_left, sphere_right) = match comparator(a, b) {
+                    CmpOrdering::Greater => (b, a),
+                    _ => (a, b)
                 };
                 (
-                    Arc::new(BVHNode::Sphere(spheres[idx_left].clone())),
-                    Arc::new(BVHNode::Sphere(spheres[idx_right].clone()))
+                    Arc::new(BVHNode::Sphere(sphere_left.clone())),
+                    Arc::new(BVHNode::Sphere(sphere_right.clone()))
                 )
             },
-            len => {
+            _ => {
                 // Subdivide.
                 spheres.sort_by(comparator);
-                let mid = len / 2;
+                let mid = spheres.len() / 2;
                 (
                     Arc::new(BVHNode::Inner(BVHInnerNode::new(&mut spheres[..mid]))),
                     Arc::new(BVHNode::Inner(BVHInnerNode::new(&mut spheres[mid..])))
@@ -300,15 +300,6 @@ impl BVHInnerNode {
         }
         let hit_left = self.left.hit(ray, t_min, t_max);
         let hit_right = self.right.hit(ray, t_min, t_max);
-        // Can we clean this up?
-        // It's simply "return the closest hit"
-        // let t_left = hit_left.as_ref().map(|h| h.t).unwrap_or(f64::INFINITY);
-        // let t_right = hit_right.as_ref().map(|h| h.t).unwrap_or(f64::INFINITY);
-        // if t_left < t_right {
-        //     hit_left
-        // } else {
-        //     hit_right
-        // }
         match (hit_left, hit_right) {
             (None, None) => None,
             (hit @ Some(_), None) => hit,
@@ -549,12 +540,12 @@ fn random_scene() -> Scene {
     Scene::new(objects)
 }
 
-fn progress_bar(pixels_remaining: Arc<AtomicUsize>, total: usize) {
+fn progress_bar(pixels_remaining: Arc<AtomicUsize>, total: usize, samples_per_pixel: usize) {
     let start = Instant::now();
     let mut last_check = total + 1;
     let period = ::std::time::Duration::from_millis(1000);
     let mut rates = ::std::collections::VecDeque::new();
-    eprint!("\n\n\n");
+    eprint!("\n\n\n\n");
     loop {
         let remaining = pixels_remaining.load(Ordering::Relaxed);
         if remaining == 0 {
@@ -571,9 +562,10 @@ fn progress_bar(pixels_remaining: Arc<AtomicUsize>, total: usize) {
 
         last_check = remaining;
 
-        eprint!("\x1b[3A");
+        eprint!("\x1b[4A");
         eprintln!("    Elapsed Time: {}    ", format_duration(start.elapsed()));
         eprintln!("  Remaining Time: {}    ", format_duration(estimated_time));
+        eprintln!("   Samples / sec: {}    ", average_rate * samples_per_pixel as f32);
         eprintln!("Remaining Pixels: {}    ", remaining);
         ::std::thread::sleep(period);
     }
@@ -651,7 +643,7 @@ fn main() {
                     });
             });
         }
-        s.spawn(|_| progress_bar(progress.clone(), (image_width * image_height) as usize));
+        s.spawn(|_| progress_bar(progress.clone(), (image_width * image_height) as usize, samples_per_pixel));
         img
     }).unwrap();
     println!("{}", progress.load(Ordering::Relaxed));

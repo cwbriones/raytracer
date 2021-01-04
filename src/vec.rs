@@ -24,13 +24,16 @@ impl Point3 {
     }
 
     #[inline]
-    pub fn x(&self) -> f64 { self.0 }
-    #[inline]
-    pub fn y(&self) -> f64 { self.1 }
-    #[inline]
-    pub fn z(&self) -> f64 { self.2 }
+    pub fn min_pointwise(&self, other: &Self) -> Point3 {
+        Point3(self.0.min(other.0), self.1.min(other.1), self.2 .min(other.2))
+    }
 
-    // #[inline]
+    #[inline]
+    pub fn max_pointwise(&self, other: &Self) -> Point3 {
+        Point3(self.0.max(other.0), self.1.max(other.1), self.2 .max(other.2))
+    }
+
+    #[inline]
     pub fn get(&self, i: usize) -> f64 {
         [self.0, self.1, self.2][i]
     }

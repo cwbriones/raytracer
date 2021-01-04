@@ -6,7 +6,8 @@ mod util;
 use std::time::Instant;
 use std::sync::Mutex;
 use std::sync::Arc;
-use std::rc::Rc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use camera::Camera;
 use vec::{Point3, Vec3};
@@ -21,16 +22,16 @@ use rand::distributions::Uniform;
 use image::{self, ImageBuffer};
 
 #[derive(Clone)]
-struct Hit {
+struct Hit<'m> {
     pub point: Point3,
     pub normal: Vec3,
     pub t: f64,
     pub front_face: bool,
-    pub material: Material,
+    pub material: &'m Material,
 }
 
-impl Hit {
-    pub fn new(ray: &Ray, t: f64, outward_normal: Vec3, material: Material) -> Self {
+impl<'m> Hit<'m> {
+    pub fn new(ray: &Ray, t: f64, outward_normal: Vec3, material: &'m Material) -> Self {
         let point = ray.at(t);
         let front_face = ray.dir().dot(&outward_normal) < 0.0;
         let normal = if front_face { outward_normal } else { outward_normal.negate() };
@@ -289,7 +290,7 @@ impl BVHInnerNode {
             },
         };
         if let (Some(box_left), Some(box_right)) = (left.bounding_box(), right.bounding_box()) {
-            let bound = box_left.surrounding(box_right);
+            let bound = box_left.merge(box_right);
             return BVHInnerNode { left, right, bound };
         }
         panic!("unbounded object in BVHNode::new!");
@@ -355,7 +356,7 @@ impl Sphere {
                     ray,
                     temp,
                     outward_normal,
-                    self.material.clone(),
+                    &self.material,
                 ));
             }
             let temp = (-half_b + root) / a;
@@ -366,7 +367,7 @@ impl Sphere {
                     ray,
                     temp,
                     outward_normal,
-                    self.material.clone(),
+                    &self.material,
                 ));
             }
         }
@@ -393,6 +394,8 @@ impl AABB {
     }
 
     pub fn hit(&self, ray: &Ray, mut t_min: f64, mut t_max: f64) -> bool {
+        // Maybe do this with SIMD intrinsics?
+        // Check all directions at once
         for a in 0..3 {
             let inv_d = ray.dir().get(a).recip();
             let mut t0 = (self.min.get(a) - ray.origin().get(a)) * inv_d;
@@ -407,35 +410,11 @@ impl AABB {
             }
         }
         true
-        // for a in 0..3 {
-        //     let a1 = (self.min.get(a) - ray.origin().get(a)) / ray.dir().get(a);
-        //     let a2 = (self.max.get(a) - ray.origin().get(a)) / ray.dir().get(a);
-        //
-        //     let t_min = a1.min(a2).max(t_min);
-        //     let t_max = a1.max(a2).min(t_max);
-        //
-        //     if t_max <= t_min {
-        //         return false
-        //     }
-        // }
-        // true
     }
 
-    pub fn bounding_box(&self) -> Option<AABB> {
-        Some(self.clone())
-    }
-
-    pub fn surrounding(&self, other: AABB) -> AABB {
-        let min = Point3::at(
-            self.min.x().min(other.min.x()),
-            self.min.y().min(other.min.y()),
-            self.min.z().min(other.min.z()),
-        );
-        let max = Point3::at(
-            self.max.x().max(other.max.x()),
-            self.max.y().max(other.max.y()),
-            self.max.z().max(other.max.z()),
-        );
+    pub fn merge(&self, other: AABB) -> AABB {
+        let min = self.min.min_pointwise(&other.min);
+        let max = self.max.max_pointwise(&other.max);
         AABB { min, max }
     }
 }
@@ -572,6 +551,49 @@ fn random_scene() -> Scene {
     Scene::new(objects)
 }
 
+fn progress_bar(pixels_remaining: Arc<AtomicUsize>, total: usize) {
+    let start = Instant::now();
+    let mut last_check = total + 1;
+    let period = ::std::time::Duration::from_millis(1000);
+    let mut rates = ::std::collections::VecDeque::new();
+    eprint!("\n\n\n");
+    loop {
+        let remaining = pixels_remaining.load(Ordering::Relaxed);
+        if remaining == 0 {
+            break;
+        }
+        let current_rate = (last_check - remaining) as f32;
+        if rates.len() == 60 {
+            rates.pop_front();
+        }
+        rates.push_back(current_rate);
+        let average_rate = rates.iter().sum::<f32>() / (rates.len() as f32);
+
+        let estimated_time = period.mul_f32(remaining as f32 / average_rate);
+
+        last_check = remaining;
+
+        eprint!("\x1b[3A");
+        eprintln!("    Elapsed Time: {}    ", format_duration(start.elapsed()));
+        eprintln!("  Remaining Time: {}    ", format_duration(estimated_time));
+        eprintln!("Remaining Pixels: {}    ", remaining);
+        ::std::thread::sleep(period);
+    }
+    eprintln!("Done!");
+}
+
+fn format_duration(d: ::std::time::Duration) -> String {
+    let hours = d.as_secs() / 3600;
+    let minutes = (d.as_secs() - hours * 3600) / 60;
+    let secs = d.as_secs() - minutes * 60 - hours * 3600;
+
+    if hours > 0 {
+        format!("{:0>2}:{:0>2}:{:0>2}", hours, minutes, secs)
+    } else {
+        format!("{:0>2}:{:0>2}", minutes, secs)
+    }
+}
+
 fn main() {
     let config = argh::from_env::<TracerConfig>();
 
@@ -592,10 +614,12 @@ fn main() {
     // the seed is identical.
     let scene = random_scene();
 
+    let progress = Arc::new(AtomicUsize::new((image_width * image_height) as usize));
     let img = crossbeam::scope(|s| {
         let img = Arc::new(Mutex::new(ImageBuffer::new(image_width, image_height)));
         for worker_id in 0..threads {
             let scene = scene.clone();
+            let progress = progress.clone();
             let img = img.clone();
             s.spawn(move |_| {
                 let camera = Camera::builder(20.0, ASPECT_RATIO)
@@ -616,6 +640,7 @@ fn main() {
                             let ray = camera.get_ray(&mut rng, u, v);
                             scene.ray_color(ray, &mut rng, max_depth).unwrap_or_else(Default::default)
                         });
+                        progress.fetch_sub(1, Ordering::Relaxed);
                         let mut guard = img.lock().unwrap();
                         let r = 256. * (color_vec.x()).sqrt().klamp(0.0, 0.99);
                         let g = 256. * (color_vec.y()).sqrt().klamp(0.0, 0.99);
@@ -628,8 +653,10 @@ fn main() {
                     });
             });
         }
+        s.spawn(|_| progress_bar(progress.clone(), (image_width * image_height) as usize));
         img
     }).unwrap();
+    println!("{}", progress.load(Ordering::Relaxed));
 
     let img = Arc::try_unwrap(img)
         .expect("all other threads have been dropped")

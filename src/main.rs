@@ -8,6 +8,7 @@ use std::sync::Mutex;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::cmp::Ordering as CmpOrdering;
 
 use camera::Camera;
 use vec::{Point3, Vec3};
@@ -257,7 +258,7 @@ impl BVHInnerNode {
         let axis = thread_rng().gen_range(0..=2usize);
         let comparator = |a: &Sphere, b: &Sphere| {
             if let (Some(bba), Some(bbb)) = (a.bounding_box(), b.bounding_box()) {
-                return bba.min.get(axis) < bbb.min.get(axis);
+                return bba.min.get(axis).partial_cmp(&bbb.min.get(axis)).unwrap();
             }
             panic!("no bounding box in constructor");
         };
@@ -269,10 +270,9 @@ impl BVHInnerNode {
             },
             2 => {
                 // Assign based on the comparator.
-                let (idx_left, idx_right) = if comparator(&spheres[0], &spheres[1]) {
-                    (0, 1)
-                } else {
-                    (1, 0)
+                let (idx_left, idx_right) = match comparator(&spheres[0], &spheres[1]) {
+                    CmpOrdering::Greater => (1, 0),
+                    _ => (0, 1)
                 };
                 (
                     Arc::new(BVHNode::Sphere(spheres[idx_left].clone())),
@@ -281,7 +281,7 @@ impl BVHInnerNode {
             },
             len => {
                 // Subdivide.
-                // spheres.sort_by(comparator);
+                spheres.sort_by(comparator);
                 let mid = len / 2;
                 (
                     Arc::new(BVHNode::Inner(BVHInnerNode::new(&mut spheres[..mid]))),

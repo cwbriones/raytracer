@@ -245,7 +245,7 @@ impl BVHNode {
         }
     }
 
-    fn bounding_box(&self) -> Option<AABB> {
+    fn bounding_box(&self) -> AABB {
         match *self {
             Self::Inner(ref inner) => inner.bounding_box(),
             Self::Sphere(ref sphere) => sphere.bounding_box(),
@@ -257,10 +257,9 @@ impl BVHInnerNode {
     pub fn new(spheres: &mut [Sphere]) -> Self {
         let axis = thread_rng().gen_range(0..=2usize);
         let comparator = |a: &Sphere, b: &Sphere| {
-            if let (Some(bba), Some(bbb)) = (a.bounding_box(), b.bounding_box()) {
-                return bba.min.get(axis).partial_cmp(&bbb.min.get(axis)).unwrap();
-            }
-            panic!("no bounding box in constructor");
+            let bba = a.bounding_box();
+            let bbb = b.bounding_box();
+            bba.min.get(axis).partial_cmp(&bbb.min.get(axis)).unwrap()
         };
         let (left, right) = match spheres.len() {
             1 => {
@@ -289,11 +288,10 @@ impl BVHInnerNode {
                 )
             },
         };
-        if let (Some(box_left), Some(box_right)) = (left.bounding_box(), right.bounding_box()) {
-            let bound = box_left.merge(box_right);
-            return BVHInnerNode { left, right, bound };
-        }
-        panic!("unbounded object in BVHNode::new!");
+        let box_left = left.bounding_box();
+        let box_right = right.bounding_box();
+        let bound = box_left.merge(&box_right);
+        BVHInnerNode { left, right, bound }
     }
 
     pub fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
@@ -320,8 +318,8 @@ impl BVHInnerNode {
         }
     }
 
-    pub fn bounding_box(&self) -> Option<AABB> {
-        Some(self.bound.clone())
+    pub fn bounding_box(&self) -> AABB {
+        self.bound.clone()
     }
 }
 
@@ -375,10 +373,10 @@ impl Sphere {
         None
     }
 
-    fn bounding_box(&self) -> Option<AABB> {
+    fn bounding_box(&self) -> AABB {
         let min = self.center - Vec3::new(self.radius, self.radius, self.radius);
         let max = self.center + Vec3::new(self.radius, self.radius, self.radius);
-        Some(AABB::new(min, max))
+        AABB::new(min, max)
     }
 }
 
@@ -397,7 +395,7 @@ impl AABB {
         // Maybe do this with SIMD intrinsics?
         // Check all directions at once
         for a in 0..3 {
-            let inv_d = ray.dir().get(a).recip();
+            let inv_d = ray.inv_dir().get(a);
             let mut t0 = (self.min.get(a) - ray.origin().get(a)) * inv_d;
             let mut t1 = (self.max.get(a) - ray.origin().get(a)) * inv_d;
             if inv_d < 0.0 {
@@ -412,7 +410,7 @@ impl AABB {
         true
     }
 
-    pub fn merge(&self, other: AABB) -> AABB {
+    pub fn merge(&self, other: &AABB) -> AABB {
         let min = self.min.min_pointwise(&other.min);
         let max = self.max.max_pointwise(&other.max);
         AABB { min, max }

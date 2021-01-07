@@ -50,6 +50,7 @@ impl Display for Point3 {
         write!(f, "({}, {}, {})", self.0, self.1, self.2)
     }
 }
+
 #[derive(Debug, Clone, Copy)]
 pub struct Vec3(f64, f64, f64);
 

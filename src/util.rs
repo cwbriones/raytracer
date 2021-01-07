@@ -1,3 +1,5 @@
+use std::cmp::{Eq, Ord, Ordering};
+
 use crate::vec::Vec3;
 use rand::Rng;
 use rand::distributions::Uniform;
@@ -31,5 +33,26 @@ impl<R> RandUtil for R
                 return v;
             }
         }
+    }
+}
+
+#[derive(PartialEq, PartialOrd, Clone, Copy)]
+pub struct NonNan(f64);
+
+impl NonNan {
+    pub fn new(val: f64) -> Option<NonNan> {
+        if val.is_nan() {
+            None
+        } else {
+            Some(NonNan(val))
+        }
+    }
+}
+
+impl Eq for NonNan {}
+
+impl Ord for NonNan {
+    fn cmp(&self, other: &NonNan) -> Ordering {
+        self.partial_cmp(other).unwrap()
     }
 }

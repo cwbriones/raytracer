@@ -1,15 +1,15 @@
-use std::ops::Sub;
+use std::fmt::Display;
 use std::ops::Add;
 use std::ops::AddAssign;
-use std::ops::Mul;
-use std::ops::MulAssign;
 use std::ops::Div;
 use std::ops::DivAssign;
-use std::fmt::Display;
+use std::ops::Mul;
+use std::ops::MulAssign;
+use std::ops::Sub;
 
-use rand::Rng;
-use rand::distributions::Standard;
 use rand::distributions::Distribution;
+use rand::distributions::Standard;
+use rand::Rng;
 
 // TODO: This can probably be made simpler using a phantom type to distinguish absolute
 // vs relative coordinates.
@@ -25,12 +25,20 @@ impl Point3 {
 
     #[inline]
     pub fn min_pointwise(&self, other: &Self) -> Point3 {
-        Point3(self.0.min(other.0), self.1.min(other.1), self.2 .min(other.2))
+        Point3(
+            self.0.min(other.0),
+            self.1.min(other.1),
+            self.2.min(other.2),
+        )
     }
 
     #[inline]
     pub fn max_pointwise(&self, other: &Self) -> Point3 {
-        Point3(self.0.max(other.0), self.1.max(other.1), self.2 .max(other.2))
+        Point3(
+            self.0.max(other.0),
+            self.1.max(other.1),
+            self.2.max(other.2),
+        )
     }
 
     #[inline]
@@ -82,11 +90,17 @@ impl Vec3 {
     }
 
     #[inline]
-    pub fn x(&self) -> f64 { self.0 }
+    pub fn x(&self) -> f64 {
+        self.0
+    }
     #[inline]
-    pub fn y(&self) -> f64 { self.1 }
+    pub fn y(&self) -> f64 {
+        self.1
+    }
     #[inline]
-    pub fn z(&self) -> f64 { self.2 }
+    pub fn z(&self) -> f64 {
+        self.2
+    }
 
     #[inline]
     pub fn negate(&self) -> Self {
@@ -129,11 +143,7 @@ impl Vec3 {
 
     #[inline]
     pub fn rand_within<R: Rng, D: Distribution<f64>>(rng: &mut R, dist: D) -> Self {
-        Vec3(
-            dist.sample(rng),
-            dist.sample(rng),
-            dist.sample(rng),
-        )
+        Vec3(dist.sample(rng), dist.sample(rng), dist.sample(rng))
     }
 
     pub fn near_zero(&self) -> bool {
@@ -150,11 +160,7 @@ impl Vec3 {
 impl Distribution<Vec3> for Standard {
     #[inline]
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Vec3 {
-        Vec3(
-            rng.gen(),
-            rng.gen(),
-            rng.gen(),
-        )
+        Vec3(rng.gen(), rng.gen(), rng.gen())
     }
 }
 
@@ -169,11 +175,7 @@ impl Add<Vec3> for Point3 {
 
     #[inline]
     fn add(self, other: Vec3) -> Self {
-        Point3(
-            self.0 + other.0,
-            self.1 + other.1,
-            self.2 + other.2
-        )
+        Point3(self.0 + other.0, self.1 + other.1, self.2 + other.2)
     }
 }
 
@@ -190,11 +192,7 @@ impl Sub for Point3 {
 
     #[inline]
     fn sub(self, other: Self) -> Vec3 {
-        Vec3(
-            self.0 - other.0,
-            self.1 - other.1,
-            self.2 - other.2
-        )
+        Vec3(self.0 - other.0, self.1 - other.1, self.2 - other.2)
     }
 }
 
@@ -203,11 +201,7 @@ impl Sub<Vec3> for Point3 {
 
     #[inline]
     fn sub(self, other: Vec3) -> Point3 {
-        Point3(
-            self.0 - other.0,
-            self.1 - other.1,
-            self.2 - other.2
-        )
+        Point3(self.0 - other.0, self.1 - other.1, self.2 - other.2)
     }
 }
 
@@ -216,11 +210,7 @@ impl Add for Vec3 {
 
     #[inline]
     fn add(self, other: Self) -> Self {
-        Vec3(
-            self.0 + other.0,
-            self.1 + other.1,
-            self.2 + other.2
-        )
+        Vec3(self.0 + other.0, self.1 + other.1, self.2 + other.2)
     }
 }
 
@@ -237,11 +227,7 @@ impl Sub for Vec3 {
 
     #[inline]
     fn sub(self, other: Self) -> Self {
-        Vec3(
-            self.0 - other.0,
-            self.1 - other.1,
-            self.2 - other.2
-        )
+        Vec3(self.0 - other.0, self.1 - other.1, self.2 - other.2)
     }
 }
 
@@ -250,11 +236,7 @@ impl Mul<Vec3> for f64 {
 
     #[inline]
     fn mul(self, v: Vec3) -> Vec3 {
-        Vec3(
-            v.0 * self,
-            v.1 * self,
-            v.2 * self,
-        )
+        Vec3(v.0 * self, v.1 * self, v.2 * self)
     }
 }
 
@@ -263,11 +245,7 @@ impl Mul<f64> for Vec3 {
 
     #[inline]
     fn mul(self, c: f64) -> Self {
-        Vec3(
-            self.0 * c,
-            self.1 * c,
-            self.2 * c,
-        )
+        Vec3(self.0 * c, self.1 * c, self.2 * c)
     }
 }
 
@@ -284,11 +262,7 @@ impl Div<f64> for Vec3 {
 
     #[inline]
     fn div(self, c: f64) -> Self {
-        Vec3(
-            self.0 / c,
-            self.1 / c,
-            self.2 / c,
-        )
+        Vec3(self.0 / c, self.1 / c, self.2 / c)
     }
 }
 

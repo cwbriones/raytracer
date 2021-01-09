@@ -1,7 +1,11 @@
-use std::cmp::{Eq, Ord, Ordering};
+use std::cmp::{
+    Eq,
+    Ord,
+    Ordering,
+};
 
-use rand::Rng;
 use rand::distributions::Uniform;
+use rand::Rng;
 
 use crate::geom::Vec3;
 
@@ -11,8 +15,8 @@ pub trait RandUtil: Rng {
 }
 
 impl<R> RandUtil for R
-    where
-        R: Rng
+where
+    R: Rng,
 {
     fn gen_in_unit_sphere(&mut self) -> Vec3 {
         let dist = Uniform::new(-1.0, 1.0);

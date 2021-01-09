@@ -1,5 +1,8 @@
+use crate::geom::{
+    Point3,
+    Vec3,
+};
 use crate::material::Material;
-use crate::geom::{Point3, Vec3};
 
 #[derive(Debug, Clone)]
 pub struct Ray {
@@ -11,7 +14,11 @@ pub struct Ray {
 impl Ray {
     pub fn new(origin: Point3, dir: Vec3) -> Self {
         let inv_dir = Vec3::new(dir.x().recip(), dir.y().recip(), dir.z().recip());
-        Self { origin, dir, inv_dir }
+        Self {
+            origin,
+            dir,
+            inv_dir,
+        }
     }
 
     pub fn origin(&self) -> Point3 {
@@ -44,7 +51,11 @@ impl<'m> Hit<'m> {
     pub fn new(ray: &Ray, t: f64, outward_normal: Vec3, material: &'m Material) -> Self {
         let point = ray.at(t);
         let front_face = ray.dir().dot(&outward_normal) < 0.0;
-        let normal = if front_face { outward_normal } else { outward_normal.negate() };
+        let normal = if front_face {
+            outward_normal
+        } else {
+            outward_normal.negate()
+        };
         Hit {
             point,
             normal,

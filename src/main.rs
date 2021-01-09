@@ -6,25 +6,37 @@ mod surfaces;
 mod trace;
 mod util;
 
-use std::time::Instant;
-use std::sync::Mutex;
-use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::Instant;
 
 use argh::FromArgs;
-use rand::{Rng, SeedableRng};
-use rand::rngs::SmallRng;
-use rand::distributions::Uniform;
-use image::{self, ImageBuffer};
-
-use camera::Camera;
-use surfaces::Sphere;
-use geom::{Point3, Vec3};
-use material::Material;
-use trace::{Hit, Ray, AABB};
-use util::Klamp;
 use bvh::BVH;
+use camera::Camera;
+use geom::{
+    Point3,
+    Vec3,
+};
+use image::{
+    self,
+    ImageBuffer,
+};
+use material::Material;
+use rand::distributions::Uniform;
+use rand::rngs::SmallRng;
+use rand::{
+    Rng,
+    SeedableRng,
+};
+use surfaces::Sphere;
+use trace::{
+    Hit,
+    Ray,
+    AABB,
+};
+use util::Klamp;
 
 #[derive(Clone)]
 struct Scene {
@@ -37,8 +49,7 @@ impl Scene {
         Scene { root }
     }
 
-    fn scatter(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit>
-    {
+    fn scatter(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
         self.root.hit(ray, t_min, t_max)
     }
 
@@ -63,7 +74,11 @@ impl Scene {
                 // Multiply the color with the sky.
                 let unit_dir = ray.dir().unit();
                 let t = 0.5 * (unit_dir.y() + 1.0);
-                return Some(attenuation.mul_pointwise(&lerp(Vec3::new(1.0, 1.0, 1.0), Vec3::new(0.5, 0.7, 1.0), t)));
+                return Some(attenuation.mul_pointwise(&lerp(
+                    Vec3::new(1.0, 1.0, 1.0),
+                    Vec3::new(0.5, 0.7, 1.0),
+                    t,
+                )));
             }
         }
         // The ray hasn't resolved for the maximum allowed iterations,
@@ -73,15 +88,16 @@ impl Scene {
 
 fn lerp(from: Vec3, to: Vec3, t: f64) -> Vec3 {
     Vec3::new(
-        (1.0 - t) * from.x() + t*to.x(),
-        (1.0 - t) * from.y() + t*to.y(),
-        (1.0 - t) * from.z() + t*to.z(),
+        (1.0 - t) * from.x() + t * to.x(),
+        (1.0 - t) * from.y() + t * to.y(),
+        (1.0 - t) * from.z() + t * to.z(),
     )
 }
 
 fn average<T, F>(n: usize, mut f: F) -> T
-    where F: FnMut() -> T,
-          T: Default + ::std::ops::AddAssign + ::std::ops::Div<f64, Output=T>,
+where
+    F: FnMut() -> T,
+    T: Default + ::std::ops::AddAssign + ::std::ops::Div<f64, Output = T>,
 {
     let mut acc = <T as Default>::default();
     for _ in 0..n {
@@ -93,18 +109,18 @@ fn average<T, F>(n: usize, mut f: F) -> T
 #[derive(FromArgs)]
 /// A simple ray tracer implementation in rust.
 struct TracerConfig {
-    #[argh(option, short='n', default="TracerConfig::default_samples()")]
+    #[argh(option, short = 'n', default = "TracerConfig::default_samples()")]
     /// the number of samples to take per pixel.
     num_samples: usize,
-    #[argh(option, short='o', default="TracerConfig::default_output()")]
+    #[argh(option, short = 'o', default = "TracerConfig::default_output()")]
     /// destination of the output image.
     ///
     /// supported formats: png, jpg
     output: String,
-    #[argh(option, default="TracerConfig::default_threads()")]
+    #[argh(option, default = "TracerConfig::default_threads()")]
     /// the number of threads to use.
     threads: usize,
-    #[argh(option, default="TracerConfig::default_width()")]
+    #[argh(option, default = "TracerConfig::default_width()")]
     /// the output image width.
     width: u32,
     #[argh(option)]
@@ -113,11 +129,21 @@ struct TracerConfig {
 }
 
 impl TracerConfig {
-    const fn default_threads() -> usize { 4 }
-    const fn default_samples() -> usize { 100 }
-    const fn default_width() -> u32 { 400 }
+    const fn default_threads() -> usize {
+        4
+    }
 
-    fn default_output() -> String { "output.png".into() }
+    const fn default_samples() -> usize {
+        100
+    }
+
+    const fn default_width() -> u32 {
+        400
+    }
+
+    fn default_output() -> String {
+        "output.png".into()
+    }
 }
 
 fn random_scene<R: Rng>(mut rng: R) -> Scene {
@@ -158,23 +184,11 @@ fn random_scene<R: Rng>(mut rng: R) -> Scene {
         }
     }
     let material1 = Material::lambertian(Vec3::new(0.05, 0.2, 0.6));
-    objects.push(Sphere::new(
-        Point3::at(-4., 1., 0.),
-        1.0,
-        material1,
-    ));
+    objects.push(Sphere::new(Point3::at(-4., 1., 0.), 1.0, material1));
     let material2 = Material::dielectric(1.5);
-    objects.push(Sphere::new(
-        Point3::at(0., 1., 0.),
-        1.0,
-        material2,
-    ));
+    objects.push(Sphere::new(Point3::at(0., 1., 0.), 1.0, material2));
     let material3 = Material::metal(Vec3::new(0.7, 0.6, 0.5), 0.0);
-    objects.push(Sphere::new(
-        Point3::at(4., 1., 0.),
-        1.0,
-        material3,
-    ));
+    objects.push(Sphere::new(Point3::at(4., 1., 0.), 1.0, material3));
 
     Scene::new(objects)
 }
@@ -204,7 +218,10 @@ fn progress_bar(pixels_remaining: Arc<AtomicUsize>, total: usize, samples_per_pi
         eprint!("\x1b[4A");
         eprintln!("    Elapsed Time: {}    ", format_duration(start.elapsed()));
         eprintln!("  Remaining Time: {}    ", format_duration(estimated_time));
-        eprintln!("   Samples / sec: {}    ", average_rate * samples_per_pixel as f32);
+        eprintln!(
+            "   Samples / sec: {}    ",
+            average_rate * samples_per_pixel as f32
+        );
         eprintln!("Remaining Pixels: {}    ", remaining);
         ::std::thread::sleep(period);
     }
@@ -224,7 +241,8 @@ fn format_duration(d: ::std::time::Duration) -> String {
 }
 
 fn small_rng(seed: Option<u64>) -> impl Rng {
-    seed.map(SmallRng::seed_from_u64).unwrap_or_else(SmallRng::from_entropy)
+    seed.map(SmallRng::seed_from_u64)
+        .unwrap_or_else(SmallRng::from_entropy)
 }
 
 fn main() {
@@ -271,24 +289,33 @@ fn main() {
                             let u = (i as f64 + rng.gen::<f64>()) / (image_width - 1) as f64;
                             let v = (j as f64 + rng.gen::<f64>()) / (image_height - 1) as f64;
                             let ray = camera.get_ray(&mut rng, u, v);
-                            scene.ray_color(ray, &mut rng, max_depth).unwrap_or_else(Default::default)
+                            scene
+                                .ray_color(ray, &mut rng, max_depth)
+                                .unwrap_or_else(Default::default)
                         });
                         progress.fetch_sub(1, Ordering::Relaxed);
                         let mut guard = img.lock().unwrap();
                         let r = 256. * (color_vec.x()).sqrt().klamp(0.0, 0.99);
                         let g = 256. * (color_vec.y()).sqrt().klamp(0.0, 0.99);
                         let b = 256. * (color_vec.z()).sqrt().klamp(0.0, 0.99);
-                        guard.put_pixel(i, image_height - j as u32 - 1, image::Rgb([
-                            r as u8,
-                            g as u8,
-                            b as u8,
-                        ]));
+                        guard.put_pixel(
+                            i,
+                            image_height - j as u32 - 1,
+                            image::Rgb([r as u8, g as u8, b as u8]),
+                        );
                     });
             });
         }
-        s.spawn(|_| progress_bar(progress.clone(), (image_width * image_height) as usize, samples_per_pixel));
+        s.spawn(|_| {
+            progress_bar(
+                progress.clone(),
+                (image_width * image_height) as usize,
+                samples_per_pixel,
+            )
+        });
         img
-    }).unwrap();
+    })
+    .unwrap();
     println!("{}", progress.load(Ordering::Relaxed));
 
     let img = Arc::try_unwrap(img)

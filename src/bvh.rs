@@ -1,8 +1,11 @@
 use std::sync::Arc;
+
 use crate::surfaces::Sphere;
-use crate::Hit;
-use crate::trace::Ray;
-use crate::AABB;
+use crate::trace::{
+    Hit,
+    Ray,
+    AABB,
+};
 use crate::util::NonNan;
 
 /// The cost of computing an intersection given a ray.
@@ -18,7 +21,9 @@ pub struct BVH {
 
 impl BVH {
     pub fn new(spheres: &mut [Sphere]) -> Self {
-        BVH { root: BVHNode::new(spheres) }
+        BVH {
+            root: BVHNode::new(spheres),
+        }
     }
 
     pub fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
@@ -35,28 +40,33 @@ enum BVHNode {
 impl BVHNode {
     fn new(spheres: &mut [Sphere]) -> Self {
         // Choose the axis
-        let axis = (0usize..3).max_by_key(|i| {
-            // Choose the axis that has the widest span of centroids.
-            //
-            // This is the distance between the rightmost and leftmost
-            // bounding boxes on a given axis.
-            let mut min = f64::INFINITY;
-            let mut max = 0.0;
-            for sphere in spheres.iter() {
-                let p = sphere.bounding_box().centroid().get(*i);
-                if p < min {
-                    min = p;
+        let axis = (0usize..3)
+            .max_by_key(|i| {
+                // Choose the axis that has the widest span of centroids.
+                //
+                // This is the distance between the rightmost and leftmost
+                // bounding boxes on a given axis.
+                let mut min = f64::INFINITY;
+                let mut max = 0.0;
+                for sphere in spheres.iter() {
+                    let p = sphere.bounding_box().centroid().get(*i);
+                    if p < min {
+                        min = p;
+                    }
+                    if p > max {
+                        max = p;
+                    }
                 }
-                if p > max {
-                    max = p;
-                }
-            }
-            NonNan::new(max - min).unwrap()
-        }).unwrap();
+                NonNan::new(max - min).unwrap()
+            })
+            .unwrap();
         let comparator = |a: &Sphere, b: &Sphere| {
             let bba = a.bounding_box();
             let bbb = b.bounding_box();
-            bba.min().get(axis).partial_cmp(&bbb.min().get(axis)).unwrap()
+            bba.min()
+                .get(axis)
+                .partial_cmp(&bbb.min().get(axis))
+                .unwrap()
         };
         let min_split_len = 4;
         if spheres.len() <= min_split_len {
@@ -71,8 +81,8 @@ impl BVHNode {
             root_bound = root_bound.merge(&sphere.bounding_box());
         }
 
-        let (best_split, best_cost) =
-            (1..spheres.len()).map(|split_idx| {
+        let (best_split, best_cost) = (1..spheres.len())
+            .map(|split_idx| {
                 // Left box
                 let mut left = spheres[0].bounding_box();
                 for sphere in &spheres[1..split_idx] {
@@ -83,10 +93,9 @@ impl BVHNode {
                 for sphere in &spheres[split_idx..] {
                     right = right.merge(&sphere.bounding_box());
                 }
-                let split_cost =
-                    TRAVERSAL_COST
-                        + left.surface_area() * split_idx as f64 * INTERSECT_COST
-                        + right.surface_area() * (spheres.len() - split_idx) as f64 * INTERSECT_COST;
+                let split_cost = TRAVERSAL_COST
+                    + left.surface_area() * split_idx as f64 * INTERSECT_COST
+                    + right.surface_area() * (spheres.len() - split_idx) as f64 * INTERSECT_COST;
                 (split_idx, split_cost)
             })
             .min_by_key(|(_, cost)| NonNan::new(*cost).unwrap())
@@ -102,7 +111,11 @@ impl BVHNode {
         let box_left = left.bounding_box();
         let box_right = right.bounding_box();
         let bound = box_left.merge(&box_right);
-        BVHNode::Inner(BVHInnerNode { left: Some(left), right: Some(right), bound })
+        BVHNode::Inner(BVHInnerNode {
+            left: Some(left),
+            right: Some(right),
+            bound,
+        })
     }
 
     fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
@@ -131,7 +144,7 @@ impl BVHInnerNode {
     #[inline(always)]
     fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
         if !self.bound.hit(ray, t_min, t_max) {
-            return None
+            return None;
         }
         let hit_left = self.left.as_ref().and_then(|n| n.hit(ray, t_min, t_max));
         let hit_right = self.right.as_ref().and_then(|n| n.hit(ray, t_min, t_max));
@@ -161,7 +174,10 @@ impl BVHLeafNode {
         for obj in &objects[1..] {
             bound = bound.merge(&obj.bounding_box());
         }
-        Self { objects: objects.into(), bound }
+        Self {
+            objects: objects.into(),
+            bound,
+        }
     }
 
     fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
@@ -182,4 +198,3 @@ impl BVHLeafNode {
         &self.bound
     }
 }
-

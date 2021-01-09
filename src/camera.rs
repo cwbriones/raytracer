@@ -1,11 +1,11 @@
 use rand::Rng;
 
-use crate::trace::Ray;
-use crate::util::RandUtil;
 use crate::geom::{
     Point3,
     Vec3,
 };
+use crate::trace::Ray;
+use crate::util::RandUtil;
 
 #[derive(Debug, Default)]
 pub struct Camera {
@@ -40,9 +40,7 @@ impl Camera {
         }
     }
 
-    fn new(
-        builder: CameraBuilder,
-    ) -> Camera {
+    fn new(builder: CameraBuilder) -> Camera {
         let h = (builder.vfov_radians / 2.0).tan();
         let viewport_height = 2.0 * h;
         let viewport_width = builder.aspect_ratio * viewport_height;
@@ -51,10 +49,10 @@ impl Camera {
         //
         // This is not the same as the focal length.
         // That is the distance between the projection and image planes.
-        let focus_dist = builder.focus_dist.unwrap_or_else(|| {
-            (builder.from - builder.towards).length()
-        });
-        
+        let focus_dist = builder
+            .focus_dist
+            .unwrap_or_else(|| (builder.from - builder.towards).length());
+
         // Form an orthonormal basis for our camera system.
         let w = (builder.from - builder.towards).unit();
         let u = builder.vup.cross(&w).unit();
@@ -82,7 +80,7 @@ impl Camera {
 
         Ray::new(
             offset_origin,
-            (self.lower_left + s * self.horizontal + t * self.vertical) - offset_origin
+            (self.lower_left + s * self.horizontal + t * self.vertical) - offset_origin,
         )
     }
 }
@@ -97,7 +95,10 @@ impl CameraBuilder {
     }
 
     pub fn focus_dist(self, focus_dist: f64) -> Self {
-        CameraBuilder { focus_dist: Some(focus_dist), ..self }
+        CameraBuilder {
+            focus_dist: Some(focus_dist),
+            ..self
+        }
     }
 
     pub fn aperture(self, aperture: f64) -> Self {

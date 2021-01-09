@@ -1,8 +1,10 @@
 use rand::Rng;
 
-use crate::Hit;
-use crate::trace::Ray;
 use crate::geom::Vec3;
+use crate::trace::{
+    Hit,
+    Ray,
+};
 use crate::util::RandUtil;
 
 #[derive(Clone)]
@@ -50,15 +52,11 @@ impl MaterialKind {
     #[inline(always)]
     fn scatter<R: Rng>(&self, ray: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
         match *self {
-            Self::Lambertian => {
-                lambertian_scatter(ray, hit, rng)
-            },
-            Self::Metal(fuzz) => {
-                metallic_scatter(fuzz, ray, hit, rng)
-            },
+            Self::Lambertian => lambertian_scatter(ray, hit, rng),
+            Self::Metal(fuzz) => metallic_scatter(fuzz, ray, hit, rng),
             Self::Dielectric(refractive_index) => {
                 dielectric_scatter(refractive_index, ray, hit, rng)
-            },
+            }
         }
     }
 }
@@ -99,26 +97,29 @@ fn metallic_scatter<R: Rng>(fuzz: f64, ray: &Ray, hit: &Hit, rng: &mut R) -> Opt
 }
 
 #[inline(always)]
-fn dielectric_scatter<R: Rng>(refractive_index: f64, ray: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
+fn dielectric_scatter<R: Rng>(
+    refractive_index: f64,
+    ray: &Ray,
+    hit: &Hit,
+    rng: &mut R,
+) -> Option<Ray> {
     let refraction_ratio = if hit.front_face {
         1.0 / refractive_index
     } else {
         refractive_index
     };
     let unit_dir = ray.dir().unit();
-    let cos_theta = unit_dir
-        .negate()
-        .dot(&hit.normal)
-        .min(1.0);
-    let sin_theta = (1.0 - cos_theta*cos_theta).sqrt();
+    let cos_theta = unit_dir.negate().dot(&hit.normal).min(1.0);
+    let sin_theta = (1.0 - cos_theta * cos_theta).sqrt();
     let cannot_refract = refraction_ratio * sin_theta > 1.0;
-    let scatter_dir = if cannot_refract || reflectance(cos_theta, refraction_ratio) > rng.gen::<f64>() {
-        // Refraction impossible, must reflect.
-        reflect(&unit_dir, &hit.normal)
-    } else {
-        // Refract.
-        refract(&unit_dir, &hit.normal, refraction_ratio)
-    };
+    let scatter_dir =
+        if cannot_refract || reflectance(cos_theta, refraction_ratio) > rng.gen::<f64>() {
+            // Refraction impossible, must reflect.
+            reflect(&unit_dir, &hit.normal)
+        } else {
+            // Refract.
+            refract(&unit_dir, &hit.normal, refraction_ratio)
+        };
     Some(Ray::new(hit.point, scatter_dir))
 }
 

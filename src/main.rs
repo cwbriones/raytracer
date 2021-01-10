@@ -15,7 +15,6 @@ use ray::Ray;
 use util::{RandUtil, NonNan};
 
 use argh::FromArgs;
-use rand::thread_rng;
 use rand::{Rng, SeedableRng};
 use rand::rngs::SmallRng;
 use rand::distributions::Uniform;
@@ -549,6 +548,9 @@ struct TracerConfig {
     #[argh(option, default="TracerConfig::default_width()")]
     /// the output image width.
     width: u32,
+    #[argh(option)]
+    /// A seed to use for RNG. By default the RNG will be seed through the OS's entropy source.
+    seed: Option<u64>,
 }
 
 impl TracerConfig {
@@ -559,7 +561,7 @@ impl TracerConfig {
     fn default_output() -> String { "output.png".into() }
 }
 
-fn random_scene() -> Scene {
+fn random_scene<R: Rng>(mut rng: R) -> Scene {
     let mut objects = Vec::new();
 
     let ground_material = Material::lambertian(Vec3::new(0.5, 0.5, 0.5));
@@ -569,7 +571,6 @@ fn random_scene() -> Scene {
         ground_material,
     ));
 
-    let mut rng = thread_rng();
     for a in -11..11 {
         for b in -11..11 {
             let choose_material = rng.gen::<f64>();
@@ -663,6 +664,10 @@ fn format_duration(d: ::std::time::Duration) -> String {
     }
 }
 
+fn small_rng(seed: Option<u64>) -> impl Rng {
+    seed.map(SmallRng::seed_from_u64).unwrap_or_else(SmallRng::from_entropy)
+}
+
 fn main() {
     let config = argh::from_env::<TracerConfig>();
 
@@ -681,7 +686,7 @@ fn main() {
     //
     // Instead we generate the scene in each thread, in which case we need to ensure
     // the seed is identical.
-    let scene = random_scene();
+    let scene = random_scene(small_rng(config.seed));
 
     let progress = Arc::new(AtomicUsize::new((image_width * image_height) as usize));
     let img = crossbeam::scope(|s| {
@@ -690,6 +695,7 @@ fn main() {
             let scene = scene.clone();
             let progress = progress.clone();
             let img = img.clone();
+            let mut rng = small_rng(config.seed);
             s.spawn(move |_| {
                 let camera = Camera::builder(20.0, ASPECT_RATIO)
                     .from(Point3::at(13., 2., 3.))
@@ -698,7 +704,6 @@ fn main() {
                     .aperture(0.1)
                     .build();
 
-                let mut rng = SmallRng::from_entropy();
                 (worker_id..(image_height as usize))
                     .step_by(threads)
                     .flat_map(|j| (0..image_width).map(move |i| (i, j)))

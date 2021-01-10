@@ -34,7 +34,6 @@ use surfaces::Sphere;
 use trace::{
     Hit,
     Ray,
-    AABB,
 };
 use util::Klamp;
 

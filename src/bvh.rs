@@ -70,7 +70,7 @@ impl BVHNode {
         };
         let min_split_len = 4;
         if spheres.len() <= min_split_len {
-            return BVHNode::Leaf(BVHLeafNode::new(spheres.iter().cloned().collect()));
+            return BVHNode::Leaf(BVHLeafNode::new(spheres.to_vec()));
         }
         // Subdivide.
         spheres.sort_by(comparator);
@@ -103,7 +103,7 @@ impl BVHNode {
 
         if best_cost > (root_bound.surface_area() * spheres.len() as f64 * INTERSECT_COST) {
             // It's cheaper to keep this node as-is instead of splitting.
-            return BVHNode::Leaf(BVHLeafNode::new(spheres.iter().cloned().collect()));
+            return BVHNode::Leaf(BVHLeafNode::new(spheres.to_vec()));
         }
 
         let left = Arc::new(BVHNode::new(&mut spheres[..best_split]));

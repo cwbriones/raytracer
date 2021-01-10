@@ -1,6 +1,6 @@
 use std::cmp::{
-    Eq,
-    Ord,
+    // Eq,
+    // Ord,
     Ordering,
 };
 
@@ -66,7 +66,7 @@ impl Klamp for f64 {
     }
 }
 
-#[derive(PartialEq, PartialOrd, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy)]
 pub struct NonNan(f64);
 
 impl NonNan {
@@ -80,6 +80,12 @@ impl NonNan {
 }
 
 impl Eq for NonNan {}
+
+impl PartialOrd for NonNan {
+    fn partial_cmp(&self, other: &NonNan) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
 
 impl Ord for NonNan {
     fn cmp(&self, other: &NonNan) -> Ordering {

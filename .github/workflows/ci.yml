@@ -1,0 +1,84 @@
+on: [push]
+
+name: ci
+
+jobs:
+  build:
+    name: Build + Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache rustup toolchains
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.rustup/settings.toml
+            ~/.rustup/toolchains/*
+            ~/.rustup/update-hashes/*
+          key: ${{ runner.os }}-rust-toolchain
+
+      - name: Cache dependencies
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install the stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Build
+        run: cargo build
+
+      - name: Run tests
+        run: cargo test
+  lints:
+    name: Lints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache rustup toolchains
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.rustup/settings.toml
+            ~/.rustup/toolchains/*
+            ~/.rustup/update-hashes/*
+          key: ${{ runner.os }}-rust-toolchain
+
+      - name: Cache dependencies
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install the stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Install the nightly toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          components: rustfmt
+
+      - name: cargo fmt
+        run: cargo +nightly fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy -- -D warnings

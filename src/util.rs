@@ -1,8 +1,4 @@
-use std::cmp::{
-    // Eq,
-    // Ord,
-    Ordering,
-};
+use std::cmp::Ordering;
 
 use rand::distributions::Uniform;
 use rand::Rng;

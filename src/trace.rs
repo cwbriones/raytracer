@@ -116,4 +116,32 @@ impl AABB {
     pub fn min(&self) -> &Point3 {
         &self.min
     }
+
+    #[cfg(test)]
+    pub fn max(&self) -> &Point3 {
+        &self.max
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn centroid() {
+        let aabb = AABB::new(Point3::at(-1., -1., -1.), Point3::at(1., 1., 1.));
+        let centroid = aabb.centroid();
+        assert_eq!(centroid.get(0), 0.0);
+        assert_eq!(centroid.get(1), 0.0);
+        assert_eq!(centroid.get(2), 0.0);
+    }
+
+    #[test]
+    fn bounding_box_surface_area() {
+        let aabb = AABB::new(Point3::at(0., 0., 0.), Point3::at(1., 2., 3.));
+        assert_eq!(aabb.surface_area(), 22.0);
+
+        let aabb = AABB::new(Point3::at(-1., -2., -3.), Point3::at(4., 5., 6.));
+        assert_eq!(aabb.surface_area(), 286.0);
+    }
 }

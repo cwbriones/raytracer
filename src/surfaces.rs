@@ -59,3 +59,22 @@ impl Sphere {
         AABB::new(min, max)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sphere_bounding_box() {
+        let sphere = Sphere::new(Point3::at(0., 0., 0.), 1.0, Material::lambertian(Vec3::new(1.0, 1.0, 1.0)));
+        let aabb = sphere.bounding_box();
+
+        assert_eq!(aabb.min().get(0), -1.0);
+        assert_eq!(aabb.min().get(1), -1.0);
+        assert_eq!(aabb.min().get(2), -1.0);
+
+        assert_eq!(aabb.max().get(0), 1.0);
+        assert_eq!(aabb.max().get(1), 1.0);
+        assert_eq!(aabb.max().get(2), 1.0);
+    }
+}

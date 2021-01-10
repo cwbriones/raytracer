@@ -72,8 +72,6 @@ fn lambertian_scatter<R: Rng>(_: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
     // rays are more uniformly scattered.
     //
     // See Section 8.5.
-    //
-    // FIXME: How can we pass in the current RNG?
     let mut scatter_direction = hit.normal + rng.gen_in_unit_sphere().unit();
 
     // Catch degenerate scatter direction
@@ -117,7 +115,6 @@ fn dielectric_scatter<R: Rng>(
             // Refraction impossible, must reflect.
             reflect(&unit_dir, &hit.normal)
         } else {
-            // Refract.
             refract(&unit_dir, &hit.normal, refraction_ratio)
         };
     Some(Ray::new(hit.point, scatter_dir))

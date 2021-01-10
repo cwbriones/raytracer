@@ -24,16 +24,16 @@ use geom::{Point3, Vec3};
 use material::Material;
 use trace::{Hit, Ray, AABB};
 use util::Klamp;
-use bvh::BVHNode;
+use bvh::BVH;
 
 #[derive(Clone)]
 struct Scene {
-    root: BVHNode,
+    root: BVH,
 }
 
 impl Scene {
     pub fn new(mut spheres: Vec<Sphere>) -> Self {
-        let root = BVHNode::new(&mut spheres);
+        let root = BVH::new(&mut spheres);
         Scene { root }
     }
 

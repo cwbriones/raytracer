@@ -5,55 +5,35 @@ use crate::trace::Ray;
 use crate::AABB;
 use crate::util::NonNan;
 
-#[derive(Clone)]
-pub struct BVHInnerNode {
-    left: Option<Arc<BVHNode>>,
-    right: Option<Arc<BVHNode>>,
-    bound: AABB,
-}
+/// The cost of computing an intersection given a ray.
+const INTERSECT_COST: f64 = 1.0;
+
+/// The cost of traversing from a parent to child node in the tree.
+const TRAVERSAL_COST: f64 = 2.0;
 
 #[derive(Clone)]
-pub struct BVHLeafNode {
-    objects: Arc<[Sphere]>,
-    bound: AABB,
+pub struct BVH {
+    root: BVHNode,
 }
 
-impl BVHLeafNode {
-    fn new(objects: Vec<Sphere>) -> Self {
-        let mut bound = objects[0].bounding_box();
-        for obj in &objects[1..] {
-            bound = bound.merge(&obj.bounding_box());
-        }
-        Self { objects: objects.into(), bound }
+impl BVH {
+    pub fn new(spheres: &mut [Sphere]) -> Self {
+        BVH { root: BVHNode::new(spheres) }
     }
 
     pub fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
-        let mut closest = t_max;
-        let mut closest_hit = None;
-        for o in &self.objects[..] {
-            if let Some(hit) = o.hit(ray, t_min, closest) {
-                if hit.t < closest {
-                    closest = hit.t;
-                    closest_hit = Some(hit);
-                }
-            }
-        }
-        closest_hit
-    }
-
-    fn bounding_box(&self) -> &AABB {
-        &self.bound
+        self.root.hit(ray, t_min, t_max)
     }
 }
 
 #[derive(Clone)]
-pub enum BVHNode {
+enum BVHNode {
     Inner(BVHInnerNode),
     Leaf(BVHLeafNode),
 }
 
 impl BVHNode {
-    pub fn new(spheres: &mut [Sphere]) -> Self {
+    fn new(spheres: &mut [Sphere]) -> Self {
         // Choose the axis
         let axis = (0usize..3).max_by_key(|i| {
             // Choose the axis that has the widest span of centroids.
@@ -91,9 +71,6 @@ impl BVHNode {
             root_bound = root_bound.merge(&sphere.bounding_box());
         }
 
-        let intersect_cost = 1.0;
-        let traversal_cost = 2.0;
-
         let (best_split, best_cost) =
             (1..spheres.len()).map(|split_idx| {
                 // Left box
@@ -107,15 +84,15 @@ impl BVHNode {
                     right = right.merge(&sphere.bounding_box());
                 }
                 let split_cost =
-                    traversal_cost
-                        + left.surface_area() * split_idx as f64 * intersect_cost
-                        + right.surface_area() * (spheres.len() - split_idx) as f64 * intersect_cost;
+                    TRAVERSAL_COST
+                        + left.surface_area() * split_idx as f64 * INTERSECT_COST
+                        + right.surface_area() * (spheres.len() - split_idx) as f64 * INTERSECT_COST;
                 (split_idx, split_cost)
             })
             .min_by_key(|(_, cost)| NonNan::new(*cost).unwrap())
             .unwrap();
 
-        if best_cost > (root_bound.surface_area() * spheres.len() as f64 * intersect_cost) {
+        if best_cost > (root_bound.surface_area() * spheres.len() as f64 * INTERSECT_COST) {
             // It's cheaper to keep this node as-is instead of splitting.
             return BVHNode::Leaf(BVHLeafNode::new(spheres.iter().cloned().collect()));
         }
@@ -128,7 +105,7 @@ impl BVHNode {
         BVHNode::Inner(BVHInnerNode { left: Some(left), right: Some(right), bound })
     }
 
-    pub fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
         match *self {
             Self::Inner(ref inner) => inner.hit(ray, t_min, t_max),
             Self::Leaf(ref leaf) => leaf.hit(ray, t_min, t_max),
@@ -143,9 +120,16 @@ impl BVHNode {
     }
 }
 
+#[derive(Clone)]
+struct BVHInnerNode {
+    left: Option<Arc<BVHNode>>,
+    right: Option<Arc<BVHNode>>,
+    bound: AABB,
+}
+
 impl BVHInnerNode {
     #[inline(always)]
-    pub fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
         if !self.bound.hit(ray, t_min, t_max) {
             return None
         }
@@ -160,7 +144,41 @@ impl BVHInnerNode {
         }
     }
 
-    pub fn bounding_box(&self) -> &AABB {
+    fn bounding_box(&self) -> &AABB {
+        &self.bound
+    }
+}
+
+#[derive(Clone)]
+struct BVHLeafNode {
+    objects: Arc<[Sphere]>,
+    bound: AABB,
+}
+
+impl BVHLeafNode {
+    fn new(objects: Vec<Sphere>) -> Self {
+        let mut bound = objects[0].bounding_box();
+        for obj in &objects[1..] {
+            bound = bound.merge(&obj.bounding_box());
+        }
+        Self { objects: objects.into(), bound }
+    }
+
+    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+        let mut closest = t_max;
+        let mut closest_hit = None;
+        for o in &self.objects[..] {
+            if let Some(hit) = o.hit(ray, t_min, closest) {
+                if hit.t < closest {
+                    closest = hit.t;
+                    closest_hit = Some(hit);
+                }
+            }
+        }
+        closest_hit
+    }
+
+    fn bounding_box(&self) -> &AABB {
         &self.bound
     }
 }

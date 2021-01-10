@@ -66,7 +66,11 @@ mod tests {
 
     #[test]
     fn sphere_bounding_box() {
-        let sphere = Sphere::new(Point3::at(0., 0., 0.), 1.0, Material::lambertian(Vec3::new(1.0, 1.0, 1.0)));
+        let sphere = Sphere::new(
+            Point3::at(0., 0., 0.),
+            1.0,
+            Material::lambertian(Vec3::new(1.0, 1.0, 1.0)),
+        );
         let aabb = sphere.bounding_box();
 
         assert_eq!(aabb.min().get(0), -1.0);

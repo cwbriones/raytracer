@@ -1,8 +1,8 @@
 use rand::Rng;
 
-use crate::ray::Ray;
+use crate::trace::Ray;
 use crate::util::RandUtil;
-use crate::vec::{
+use crate::geom::{
     Point3,
     Vec3,
 };

@@ -1,7 +1,3 @@
-use rand::Rng;
-use rand::distributions::Standard;
-use rand::distributions::Distribution;
-
 use std::ops::Sub;
 use std::ops::Add;
 use std::ops::AddAssign;
@@ -10,6 +6,10 @@ use std::ops::MulAssign;
 use std::ops::Div;
 use std::ops::DivAssign;
 use std::fmt::Display;
+
+use rand::Rng;
+use rand::distributions::Standard;
+use rand::distributions::Distribution;
 
 // TODO: This can probably be made simpler using a phantom type to distinguish absolute
 // vs relative coordinates.

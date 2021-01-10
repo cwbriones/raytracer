@@ -1,8 +1,9 @@
 use std::cmp::{Eq, Ord, Ordering};
 
-use crate::vec::Vec3;
 use rand::Rng;
 use rand::distributions::Uniform;
+
+use crate::geom::Vec3;
 
 pub trait RandUtil: Rng {
     fn gen_in_unit_sphere(&mut self) -> Vec3;
@@ -33,6 +34,31 @@ impl<R> RandUtil for R
                 return v;
             }
         }
+    }
+}
+
+/// Extension trait to add a clamp method to floats.
+///
+/// This conflicts with a method to be stabilized in Rust 1.50, hence the odd spelling.
+pub trait Klamp {
+    fn klamp(self, min: Self, max: Self) -> Self;
+}
+
+impl Klamp for f64 {
+    #[must_use = "method returns a new number and does not mutate the original value"]
+    #[inline]
+    fn klamp(self, min: f64, max: f64) -> f64 {
+        // This is copied directly from std::f64::clamp,
+        // with the exception of debug_assert!
+        debug_assert!(min <= max);
+        let mut x = self;
+        if x < min {
+            x = min;
+        }
+        if x > max {
+            x = max;
+        }
+        x
     }
 }
 

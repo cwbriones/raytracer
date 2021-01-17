@@ -13,6 +13,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aae1277d39aeec15cb388266ecc24b11c80469deae6067e17a1a7aa9e5c1f234"
 
 [[package]]
+name = "anyhow"
+version = "1.0.38"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "afddf7f520a80dbf76e6f50a35bca42a2331ef227a28b3b6dc5c2e2338d114b1"
+
+[[package]]
 name = "argh"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -448,10 +454,13 @@ dependencies = [
 name = "raytracer"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "argh",
  "crossbeam",
  "image",
  "rand",
+ "thiserror",
+ "tobj",
 ]
 
 [[package]]
@@ -478,6 +487,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "thiserror"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76cc616c6abf8c8928e2fdcc0dbfab37175edd8fb49a4641066ad1364fdab146"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9be73a2caec27583d0046ef3796c3794f868a5bc813db689eed00c7631275cd1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "tiff"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -487,6 +516,12 @@ dependencies = [
  "miniz_oxide 0.4.3",
  "weezl",
 ]
+
+[[package]]
+name = "tobj"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18ae31f5c23500c4bbbea8420c1761e9bdfdd8eeb95f35f37c97cb67ec9d7aff"
 
 [[package]]
 name = "unicode-segmentation"

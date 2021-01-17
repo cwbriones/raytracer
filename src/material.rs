@@ -7,7 +7,7 @@ use crate::trace::{
 };
 use crate::util::RandUtil;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Material {
     albedo: Vec3,
     kind: MaterialKind,
@@ -41,7 +41,7 @@ impl Material {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 enum MaterialKind {
     Lambertian,
     Metal(f64),

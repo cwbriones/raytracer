@@ -19,7 +19,7 @@ pub struct Point3(f64, f64, f64);
 
 impl Point3 {
     #[inline]
-    pub fn new(x: f64, y: f64, z: f64) -> Self {
+    pub const fn new(x: f64, y: f64, z: f64) -> Self {
         Point3(x, y, z)
     }
 
@@ -42,11 +42,6 @@ impl Point3 {
     }
 
     #[inline]
-    pub fn get(&self, i: usize) -> f64 {
-        [self.0, self.1, self.2][i]
-    }
-
-    #[inline]
     pub fn x(&self) -> f64 {
         self.0
     }
@@ -59,6 +54,21 @@ impl Point3 {
     #[inline]
     pub fn z(&self) -> f64 {
         self.2
+    }
+
+    #[inline]
+    pub fn get(&self, i: usize) -> f64 {
+        [self.0, self.1, self.2][i]
+    }
+
+    pub fn into_vec3(self) -> Vec3 {
+        Vec3(self.0, self.1, self.2)
+    }
+}
+
+impl Into<Vec3> for Point3 {
+    fn into(self) -> Vec3 {
+        self.into_vec3()
     }
 }
 
@@ -85,7 +95,7 @@ impl Display for Vec3 {
 
 impl Vec3 {
     #[inline]
-    pub fn new(x: f64, y: f64, z: f64) -> Self {
+    pub const fn new(x: f64, y: f64, z: f64) -> Self {
         Vec3(x, y, z)
     }
 

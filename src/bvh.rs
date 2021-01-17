@@ -40,9 +40,31 @@ impl<S> BVH<S>
 where
     S: Hittable + Bounded + Clone,
 {
+    /// Construct a BVH using the Surface-Area-Heuristic.
+    #[allow(unused)]
     pub fn new(surfaces: &mut [S]) -> Self {
         BVH {
             root: BVHNode::new_with_strategy(surfaces, &mut SAHConstructionStrategy),
+        }
+    }
+
+    /// Construct a BVH by choosing a random access to partition on, dividing evenly each time.
+    #[allow(unused)]
+    pub fn new_random<R: Rng>(surfaces: &mut [S], rng: &mut R) -> Self {
+        BVH {
+            root: BVHNode::new_with_strategy(surfaces, &mut RandomConstructionStrategy(rng)),
+        }
+    }
+
+    /// Construct a that utilizes random choice until the tree becomes small enough.
+    pub fn new_tiered<R: Rng>(surfaces: &mut [S], rng: &mut R, threshold: usize) -> Self {
+        let mut strategy = SizedConstructionStrategy {
+            threshold,
+            small: SAHConstructionStrategy,
+            big: RandomConstructionStrategy(rng),
+        };
+        BVH {
+            root: BVHNode::new_with_strategy(surfaces, &mut strategy),
         }
     }
 }
@@ -75,9 +97,26 @@ struct RandomConstructionStrategy<R>(R);
 impl<S, R> ConstructionStrategy<S> for RandomConstructionStrategy<R>
 where
     R: Rng,
+    S: Bounded,
 {
-    fn choose_axis(&mut self, _surfaces: &[S]) -> usize {
-        self.0.gen_range(0..3)
+    fn choose_axis(&mut self, surfaces: &[S]) -> usize {
+        // _self.0.gen_range(0..3)
+        (0usize..3)
+            .max_by_key(|i| {
+                let mut min = f64::INFINITY;
+                let mut max = 0.0;
+                for surface in surfaces.iter() {
+                    let p = surface.bounding_box().centroid().get(*i);
+                    if p < min {
+                        min = p;
+                    }
+                    if p > max {
+                        max = p;
+                    }
+                }
+                NonNan::new(max - min).unwrap()
+            })
+            .unwrap()
     }
 
     fn split_at(&mut self, surfaces: &[S]) -> Option<usize> {
@@ -150,6 +189,34 @@ where
     }
 }
 
+struct SizedConstructionStrategy<T1, T2> {
+    threshold: usize,
+    small: T1,
+    big: T2,
+}
+
+impl<S, T1, T2> ConstructionStrategy<S> for SizedConstructionStrategy<T1, T2>
+where
+    T1: ConstructionStrategy<S>,
+    T2: ConstructionStrategy<S>,
+{
+    fn choose_axis(&mut self, surfaces: &[S]) -> usize {
+        if surfaces.len() <= self.threshold {
+            self.small.choose_axis(surfaces)
+        } else {
+            self.big.choose_axis(surfaces)
+        }
+    }
+
+    fn split_at(&mut self, surfaces: &[S]) -> Option<usize> {
+        if surfaces.len() <= self.threshold {
+            self.small.split_at(surfaces)
+        } else {
+            self.big.split_at(surfaces)
+        }
+    }
+}
+
 #[derive(Clone)]
 enum BVHNode<S> {
     Inner(BVHInnerNode<S>),
@@ -174,7 +241,7 @@ where
                 .partial_cmp(&bbb.min().get(axis))
                 .unwrap()
         };
-        let min_split_len = 4;
+        let min_split_len = 8;
         if surfaces.len() <= min_split_len {
             return BVHNode::Leaf(BVHLeafNode::new(surfaces.to_vec()));
         }

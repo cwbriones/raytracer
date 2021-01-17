@@ -7,7 +7,7 @@ use crate::geom::{
 use crate::trace::Ray;
 use crate::util::RandUtil;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
 pub struct Camera {
     lower_left: Point3,
     horizontal: Vec3,
@@ -35,7 +35,7 @@ impl Camera {
             from: Point3::new(13., 2., 3.),
             towards: Point3::new(0., 0., 0.),
             vup: Vec3::new(0., 1., 0.),
-            aperture: 5.0,
+            aperture: 0.0,
             focus_dist: None,
         }
     }

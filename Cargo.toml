@@ -11,6 +11,9 @@ rand = {version = "0.8", features = ["small_rng"]}
 image = "0.23"
 crossbeam = "0.8"
 argh = "0.1"
+tobj = "2.0"
+anyhow = "1.0"
+thiserror = "1.0"
 
 [profile.release]
 # lto = true

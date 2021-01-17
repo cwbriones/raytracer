@@ -123,6 +123,22 @@ impl AABB {
     }
 }
 
+/// An object within the scene that can be hit by rays.
+pub trait Hittable {
+    /// Attempt to hit object with `ray`, returning the hit that occurred, if any.
+    ///
+    /// The hit must not be returned if it occured at time t outside [t_min, t_max].
+    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit>;
+}
+
+/// An object that has a bounding box (i.e. one that is finite in extent).
+pub trait Bounded {
+    /// Returns a bounding box for this object.
+    ///
+    /// Ideally this box is as small as possible, but that is not required.
+    fn bounding_box(&self) -> AABB;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

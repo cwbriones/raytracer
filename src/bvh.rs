@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
-use crate::surfaces::Sphere;
 use crate::trace::{
+    Bounded,
     Hit,
+    Hittable,
     Ray,
     AABB,
 };
@@ -15,30 +16,41 @@ const INTERSECT_COST: f64 = 1.0;
 const TRAVERSAL_COST: f64 = 2.0;
 
 #[derive(Clone)]
-pub struct BVH {
-    root: BVHNode,
+pub struct BVH<H> {
+    root: BVHNode<H>,
 }
 
-impl BVH {
-    pub fn new(spheres: &mut [Sphere]) -> Self {
+impl<H> BVH<H>
+where
+    H: Hittable + Bounded + Clone,
+{
+    pub fn new(objects: &mut [H]) -> Self {
         BVH {
-            root: BVHNode::new(spheres),
+            root: BVHNode::new(objects),
         }
     }
+}
 
-    pub fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+impl<H> Hittable for BVH<H>
+where
+    H: Hittable + Bounded,
+{
+    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
         self.root.hit(ray, t_min, t_max)
     }
 }
 
 #[derive(Clone)]
-enum BVHNode {
-    Inner(BVHInnerNode),
-    Leaf(BVHLeafNode),
+enum BVHNode<H> {
+    Inner(BVHInnerNode<H>),
+    Leaf(BVHLeafNode<H>),
 }
 
-impl BVHNode {
-    fn new(spheres: &mut [Sphere]) -> Self {
+impl<H> BVHNode<H>
+where
+    H: Hittable + Bounded + Clone,
+{
+    fn new(objects: &mut [H]) -> Self {
         // Choose the axis
         let axis = (0usize..3)
             .max_by_key(|i| {
@@ -48,7 +60,7 @@ impl BVHNode {
                 // bounding boxes on a given axis.
                 let mut min = f64::INFINITY;
                 let mut max = 0.0;
-                for sphere in spheres.iter() {
+                for sphere in objects.iter() {
                     let p = sphere.bounding_box().centroid().get(*i);
                     if p < min {
                         min = p;
@@ -60,7 +72,7 @@ impl BVHNode {
                 NonNan::new(max - min).unwrap()
             })
             .unwrap();
-        let comparator = |a: &Sphere, b: &Sphere| {
+        let comparator = |a: &H, b: &H| {
             let bba = a.bounding_box();
             let bbb = b.bounding_box();
             bba.min()
@@ -69,45 +81,45 @@ impl BVHNode {
                 .unwrap()
         };
         let min_split_len = 4;
-        if spheres.len() <= min_split_len {
-            return BVHNode::Leaf(BVHLeafNode::new(spheres.to_vec()));
+        if objects.len() <= min_split_len {
+            return BVHNode::Leaf(BVHLeafNode::new(objects.to_vec()));
         }
         // Subdivide.
-        spheres.sort_by(comparator);
+        objects.sort_by(comparator);
         // Use the Surface Area Heuristic (SAH) to determine where to partition
         // the children.
-        let mut root_bound = spheres[0].bounding_box();
-        for sphere in &spheres[1..] {
+        let mut root_bound = objects[0].bounding_box();
+        for sphere in &objects[1..] {
             root_bound = root_bound.merge(&sphere.bounding_box());
         }
 
-        let (best_split, best_cost) = (1..spheres.len())
+        let (best_split, best_cost) = (1..objects.len())
             .map(|split_idx| {
                 // Left box
-                let mut left = spheres[0].bounding_box();
-                for sphere in &spheres[1..split_idx] {
+                let mut left = objects[0].bounding_box();
+                for sphere in &objects[1..split_idx] {
                     left = left.merge(&sphere.bounding_box());
                 }
                 // Right box
-                let mut right = spheres[split_idx].bounding_box();
-                for sphere in &spheres[split_idx..] {
+                let mut right = objects[split_idx].bounding_box();
+                for sphere in &objects[split_idx..] {
                     right = right.merge(&sphere.bounding_box());
                 }
                 let split_cost = TRAVERSAL_COST
                     + left.surface_area() * split_idx as f64 * INTERSECT_COST
-                    + right.surface_area() * (spheres.len() - split_idx) as f64 * INTERSECT_COST;
+                    + right.surface_area() * (objects.len() - split_idx) as f64 * INTERSECT_COST;
                 (split_idx, split_cost)
             })
             .min_by_key(|(_, cost)| NonNan::new(*cost).unwrap())
             .unwrap();
 
-        if best_cost > (root_bound.surface_area() * spheres.len() as f64 * INTERSECT_COST) {
+        if best_cost > (root_bound.surface_area() * objects.len() as f64 * INTERSECT_COST) {
             // It's cheaper to keep this node as-is instead of splitting.
-            return BVHNode::Leaf(BVHLeafNode::new(spheres.to_vec()));
+            return BVHNode::Leaf(BVHLeafNode::new(objects.to_vec()));
         }
 
-        let left = Arc::new(BVHNode::new(&mut spheres[..best_split]));
-        let right = Arc::new(BVHNode::new(&mut spheres[best_split..]));
+        let left = Arc::new(BVHNode::new(&mut objects[..best_split]));
+        let right = Arc::new(BVHNode::new(&mut objects[best_split..]));
         let box_left = left.bounding_box();
         let box_right = right.bounding_box();
         let bound = box_left.merge(&box_right);
@@ -117,7 +129,12 @@ impl BVHNode {
             bound,
         })
     }
+}
 
+impl<H> BVHNode<H>
+where
+    H: Hittable + Bounded,
+{
     fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
         match *self {
             Self::Inner(ref inner) => inner.hit(ray, t_min, t_max),
@@ -134,13 +151,16 @@ impl BVHNode {
 }
 
 #[derive(Clone)]
-struct BVHInnerNode {
-    left: Option<Arc<BVHNode>>,
-    right: Option<Arc<BVHNode>>,
+struct BVHInnerNode<H> {
+    left: Option<Arc<BVHNode<H>>>,
+    right: Option<Arc<BVHNode<H>>>,
     bound: AABB,
 }
 
-impl BVHInnerNode {
+impl<H> BVHInnerNode<H>
+where
+    H: Hittable + Bounded,
+{
     #[inline(always)]
     fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
         if !self.bound.hit(ray, t_min, t_max) {
@@ -163,13 +183,16 @@ impl BVHInnerNode {
 }
 
 #[derive(Clone)]
-struct BVHLeafNode {
-    objects: Arc<[Sphere]>,
+struct BVHLeafNode<H> {
+    objects: Arc<[H]>,
     bound: AABB,
 }
 
-impl BVHLeafNode {
-    fn new(objects: Vec<Sphere>) -> Self {
+impl<H> BVHLeafNode<H>
+where
+    H: Hittable + Bounded,
+{
+    fn new(objects: Vec<H>) -> Self {
         let mut bound = objects[0].bounding_box();
         for obj in &objects[1..] {
             bound = bound.merge(&obj.bounding_box());

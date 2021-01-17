@@ -192,7 +192,7 @@ where
                 bound,
             });
         }
-        return BVHNode::Leaf(BVHLeafNode::new(surfaces.to_vec()));
+        BVHNode::Leaf(BVHLeafNode::new(surfaces.to_vec()))
     }
 }
 

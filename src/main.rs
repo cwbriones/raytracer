@@ -32,13 +32,14 @@ use rand::{
 use surfaces::Sphere;
 use trace::{
     Hit,
+    Hittable,
     Ray,
 };
 use util::Klamp;
 
 #[derive(Clone)]
 struct Scene {
-    root: BVH,
+    root: BVH<Sphere>,
 }
 
 impl Scene {

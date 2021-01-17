@@ -4,7 +4,9 @@ use crate::geom::{
 };
 use crate::material::Material;
 use crate::trace::{
+    Bounded,
     Hit,
+    Hittable,
     Ray,
     AABB,
 };
@@ -24,9 +26,19 @@ impl Sphere {
             material,
         }
     }
+}
 
+impl Bounded for Sphere {
+    fn bounding_box(&self) -> AABB {
+        let min = self.center - Vec3::new(self.radius, self.radius, self.radius);
+        let max = self.center + Vec3::new(self.radius, self.radius, self.radius);
+        AABB::new(min, max)
+    }
+}
+
+impl Hittable for Sphere {
     #[inline(always)]
-    pub fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
         let oc = ray.origin() - self.center;
         let a = ray.dir().square_length();
         let half_b = oc.dot(&ray.dir());
@@ -51,12 +63,6 @@ impl Sphere {
         }
         // Does not hit the sphere.
         None
-    }
-
-    pub fn bounding_box(&self) -> AABB {
-        let min = self.center - Vec3::new(self.radius, self.radius, self.radius);
-        let max = self.center + Vec3::new(self.radius, self.radius, self.radius);
-        AABB::new(min, max)
     }
 }
 

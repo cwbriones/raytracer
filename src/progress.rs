@@ -10,7 +10,7 @@ use std::time::{
 const REPORT_PERIOD: Duration = Duration::from_millis(1000);
 const AVERAGE_OVER_PERIODS: usize = 60;
 
-const ANSI_CURSOR_UP: &'static str = "\x1b[4A";
+const ANSI_CURSOR_UP: &str = "\x1b[4A";
 
 /// A wrapper around a simple progress reporter.
 ///

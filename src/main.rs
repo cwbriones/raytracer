@@ -2,12 +2,11 @@ mod bvh;
 mod camera;
 mod geom;
 mod material;
+mod progress;
 mod surfaces;
 mod trace;
 mod util;
 
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
@@ -192,53 +191,6 @@ fn random_scene<R: Rng>(mut rng: R) -> Scene {
     Scene::new(objects)
 }
 
-fn progress_bar(pixels_remaining: Arc<AtomicUsize>, total: usize, samples_per_pixel: usize) {
-    let start = Instant::now();
-    let mut last_check = total + 1;
-    let period = ::std::time::Duration::from_millis(1000);
-    let mut rates = ::std::collections::VecDeque::new();
-    eprint!("\n\n\n\n");
-    loop {
-        let remaining = pixels_remaining.load(Ordering::Relaxed);
-        if remaining == 0 {
-            break;
-        }
-        let current_rate = (last_check - remaining) as f32;
-        if rates.len() == 60 {
-            rates.pop_front();
-        }
-        rates.push_back(current_rate);
-        let average_rate = rates.iter().sum::<f32>() / (rates.len() as f32);
-
-        let estimated_time = period.mul_f32(remaining as f32 / average_rate);
-
-        last_check = remaining;
-
-        eprint!("\x1b[4A");
-        eprintln!("    Elapsed Time: {}    ", format_duration(start.elapsed()));
-        eprintln!("  Remaining Time: {}    ", format_duration(estimated_time));
-        eprintln!(
-            "   Samples / sec: {}    ",
-            average_rate * samples_per_pixel as f32
-        );
-        eprintln!("Remaining Pixels: {}    ", remaining);
-        ::std::thread::sleep(period);
-    }
-    eprintln!("Done!");
-}
-
-fn format_duration(d: ::std::time::Duration) -> String {
-    let hours = d.as_secs() / 3600;
-    let minutes = (d.as_secs() - hours * 3600) / 60;
-    let secs = d.as_secs() - minutes * 60 - hours * 3600;
-
-    if hours > 0 {
-        format!("{:0>2}:{:0>2}:{:0>2}", hours, minutes, secs)
-    } else {
-        format!("{:0>2}:{:0>2}", minutes, secs)
-    }
-}
-
 fn small_rng(seed: Option<u64>) -> impl Rng {
     seed.map(SmallRng::seed_from_u64)
         .unwrap_or_else(SmallRng::from_entropy)
@@ -264,12 +216,12 @@ fn main() {
     // the seed is identical.
     let scene = random_scene(small_rng(config.seed));
 
-    let progress = Arc::new(AtomicUsize::new((image_width * image_height) as usize));
+    let progress = progress::ProgressBar::new((image_width * image_height) as usize);
     let img = crossbeam::scope(|s| {
         let img = Arc::new(Mutex::new(ImageBuffer::new(image_width, image_height)));
         for worker_id in 0..threads {
             let scene = scene.clone();
-            let progress = progress.clone();
+            let progress_recorder = progress.create_recorder();
             let img = img.clone();
             let mut rng = small_rng(config.seed);
             s.spawn(move |_| {
@@ -292,7 +244,7 @@ fn main() {
                                 .ray_color(ray, &mut rng, max_depth)
                                 .unwrap_or_else(Default::default)
                         });
-                        progress.fetch_sub(1, Ordering::Relaxed);
+                        progress_recorder.record();
                         let mut guard = img.lock().unwrap();
                         let r = 256. * (color_vec.x()).sqrt().klamp(0.0, 0.99);
                         let g = 256. * (color_vec.y()).sqrt().klamp(0.0, 0.99);
@@ -305,17 +257,10 @@ fn main() {
                     });
             });
         }
-        s.spawn(|_| {
-            progress_bar(
-                progress.clone(),
-                (image_width * image_height) as usize,
-                samples_per_pixel,
-            )
-        });
+        s.spawn(|_| progress.run(samples_per_pixel));
         img
     })
     .unwrap();
-    println!("{}", progress.load(Ordering::Relaxed));
 
     let img = Arc::try_unwrap(img)
         .expect("all other threads have been dropped")

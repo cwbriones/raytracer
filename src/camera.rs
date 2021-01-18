@@ -32,8 +32,8 @@ impl Camera {
         CameraBuilder {
             aspect_ratio,
             vfov_radians: vfov.to_radians(),
-            from: Point3::at(13., 2., 3.),
-            towards: Point3::at(0., 0., 0.),
+            from: Point3::new(13., 2., 3.),
+            towards: Point3::new(0., 0., 0.),
             vup: Vec3::new(0., 1., 0.),
             aperture: 5.0,
             focus_dist: None,

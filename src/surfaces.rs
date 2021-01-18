@@ -73,7 +73,7 @@ mod tests {
     #[test]
     fn sphere_bounding_box() {
         let sphere = Sphere::new(
-            Point3::at(0., 0., 0.),
+            Point3::new(0., 0., 0.),
             1.0,
             Material::lambertian(Vec3::new(1.0, 1.0, 1.0)),
         );

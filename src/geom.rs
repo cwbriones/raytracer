@@ -50,10 +50,12 @@ impl Point3 {
     pub fn x(&self) -> f64 {
         self.0
     }
+
     #[inline]
     pub fn y(&self) -> f64 {
         self.1
     }
+
     #[inline]
     pub fn z(&self) -> f64 {
         self.2
@@ -315,16 +317,8 @@ impl UnitQuaternion {
         }
     }
 
-    pub const fn real(w: f64) -> Self {
-        UnitQuaternion {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-            w,
-        }
-    }
-
     /// A unit quaternion oriented along the x-axis.
+    #[allow(unused)]
     pub const fn i() -> Self {
         UnitQuaternion {
             x: 1.0,
@@ -335,6 +329,7 @@ impl UnitQuaternion {
     }
 
     /// A unit quaternion oriented along the y-axis.
+    #[allow(unused)]
     pub const fn j() -> Self {
         UnitQuaternion {
             x: 0.0,
@@ -345,6 +340,7 @@ impl UnitQuaternion {
     }
 
     /// A unit quaternion oriented along the z-axis.
+    #[allow(unused)]
     pub const fn k() -> Self {
         UnitQuaternion {
             x: 0.0,
@@ -365,23 +361,8 @@ impl UnitQuaternion {
         }
     }
 
-    #[inline]
-    pub const fn length(&self) -> f64 {
-        1.0
-    }
-
-    /// Negate this quaternion.
-    #[inline]
-    pub fn negate(&self) -> Self {
-        UnitQuaternion {
-            x: -self.x,
-            y: -self.y,
-            z: -self.z,
-            w: -self.w,
-        }
-    }
-
     /// Create a quaternion from a desired rotation around an axis.
+    #[allow(unused)]
     pub fn rotation(axis: Vec3, angle: f64) -> Self {
         let cos = (angle / 2.0).cos();
         let sin = (angle / 2.0).sin();
@@ -390,6 +371,7 @@ impl UnitQuaternion {
     }
 
     /// Rotate a vector using this quaternion.
+    #[allow(unused)]
     pub fn rotate_vec(&self, direction: Vec3) -> Vec3 {
         let lhs = UnitQuaternion {
             x: direction.x(),
@@ -403,6 +385,7 @@ impl UnitQuaternion {
     }
 
     /// Rotate a point using this quaternion.
+    #[allow(unused)]
     pub fn rotate_point(&self, direction: Point3) -> Point3 {
         let lhs = UnitQuaternion {
             x: direction.x(),
@@ -415,6 +398,7 @@ impl UnitQuaternion {
         Point3::new(out.x, out.y, out.z)
     }
 
+    #[cfg(test)]
     #[inline]
     pub fn rel_eq(&self, other: &Self, epsilon: f64) -> bool {
         (self.x - other.x).abs() < epsilon
@@ -467,8 +451,8 @@ mod test {
 
         let ijk = i * jk;
 
-        let one = UnitQuaternion::real(1.0);
-        let neg_one = UnitQuaternion::real(-1.0);
+        let one = UnitQuaternion::new(0.0, 0.0, 0.0, 1.0);
+        let neg_one = UnitQuaternion::new(0.0, 0.0, 0.0, -1.0);
 
         assert!(ii.rel_eq(&neg_one, EPS), "ii = {:?}", ii);
         assert!(jj.rel_eq(&neg_one, EPS), "jj = {:?}", jj);

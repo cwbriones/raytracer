@@ -60,15 +60,11 @@ impl Point3 {
     pub fn get(&self, i: usize) -> f64 {
         [self.0, self.1, self.2][i]
     }
-
-    pub fn into_vec3(self) -> Vec3 {
-        Vec3(self.0, self.1, self.2)
-    }
 }
 
 impl Into<Vec3> for Point3 {
     fn into(self) -> Vec3 {
-        self.into_vec3()
+        Vec3(self.0, self.1, self.2)
     }
 }
 

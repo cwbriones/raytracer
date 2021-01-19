@@ -341,11 +341,6 @@ fn main() -> anyhow::Result<()> {
 
     let start = Instant::now();
 
-    // This is stupid but as a limitation of using trait objects, I can't create the scene
-    // once and send it to all worker threads.
-    //
-    // Instead we generate the scene in each thread, in which case we need to ensure
-    // the seed is identical.
     let scene = Arc::new(scene()?);
 
     let progress = progress::ProgressBar::new((image_width * image_height) as usize);

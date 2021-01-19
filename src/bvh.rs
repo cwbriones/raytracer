@@ -44,27 +44,15 @@ where
     #[allow(unused)]
     pub fn new(surfaces: &mut [S]) -> Self {
         BVH {
-            root: BVHNode::new_with_strategy(surfaces, &mut SAHConstructionStrategy),
+            root: BVHNode::new_with_strategy(surfaces, &mut SAHSplitStrategy),
         }
     }
 
-    /// Construct a BVH by choosing a random access to partition on, dividing evenly each time.
+    /// Construct a BVH by dividing each level evenly each time.
     #[allow(unused)]
-    pub fn new_random<R: Rng>(surfaces: &mut [S], rng: &mut R) -> Self {
+    pub fn new_naive<R: Rng>(surfaces: &mut [S]) -> Self {
         BVH {
-            root: BVHNode::new_with_strategy(surfaces, &mut RandomConstructionStrategy(rng)),
-        }
-    }
-
-    /// Construct a that utilizes random choice until the tree becomes small enough.
-    pub fn new_tiered<R: Rng>(surfaces: &mut [S], rng: &mut R, threshold: usize) -> Self {
-        let mut strategy = SizedConstructionStrategy {
-            threshold,
-            small: SAHConstructionStrategy,
-            big: RandomConstructionStrategy(rng),
-        };
-        BVH {
-            root: BVHNode::new_with_strategy(surfaces, &mut strategy),
+            root: BVHNode::new_with_strategy(surfaces, &mut EqualSplitStrategy),
         }
     }
 }
@@ -79,10 +67,7 @@ where
 }
 
 /// A strategy for constructing a BVH.
-trait ConstructionStrategy<S> {
-    /// Choose the axis used to partition this level of the tree.
-    fn choose_axis(&mut self, surfaces: &[S]) -> usize;
-
+trait SplitStrategy<S> {
     /// Choose the partitioning index. This is the index of the first surface
     /// that will be placed in the right child.
     ///
@@ -91,87 +76,52 @@ trait ConstructionStrategy<S> {
     fn split_at(&mut self, surfaces: &[S]) -> Option<usize>;
 }
 
-/// Construct the tree randomly.
-struct RandomConstructionStrategy<R>(R);
+/// Split each level of the tree equally into two parts.
+struct EqualSplitStrategy;
 
-impl<S, R> ConstructionStrategy<S> for RandomConstructionStrategy<R>
+impl<S> SplitStrategy<S> for EqualSplitStrategy
 where
-    R: Rng,
     S: Bounded,
 {
-    fn choose_axis(&mut self, surfaces: &[S]) -> usize {
-        // _self.0.gen_range(0..3)
-        (0usize..3)
-            .max_by_key(|i| {
-                let mut min = f64::INFINITY;
-                let mut max = 0.0;
-                for surface in surfaces.iter() {
-                    let p = surface.bounding_box().centroid().get(*i);
-                    if p < min {
-                        min = p;
-                    }
-                    if p > max {
-                        max = p;
-                    }
-                }
-                NonNan::new(max - min).unwrap()
-            })
-            .unwrap()
-    }
-
     fn split_at(&mut self, surfaces: &[S]) -> Option<usize> {
         Some(surfaces.len() / 2)
     }
 }
 
-/// Construct the tree using the surface area heuristic.
-struct SAHConstructionStrategy;
+/// Split each level of the tree using the surface area heuristic.
+struct SAHSplitStrategy;
 
-impl<S> ConstructionStrategy<S> for SAHConstructionStrategy
+impl<S> SplitStrategy<S> for SAHSplitStrategy
 where
     S: Bounded,
 {
-    fn choose_axis(&mut self, surfaces: &[S]) -> usize {
-        // Choose the axis that has the widest span of centroids.
-        //
-        // This is the distance between the rightmost and leftmost
-        // bounding boxes on a given axis.
-        (0usize..3)
-            .max_by_key(|i| {
-                let mut min = f64::INFINITY;
-                let mut max = 0.0;
-                for surface in surfaces.iter() {
-                    let p = surface.bounding_box().centroid().get(*i);
-                    if p < min {
-                        min = p;
-                    }
-                    if p > max {
-                        max = p;
-                    }
-                }
-                NonNan::new(max - min).unwrap()
-            })
-            .unwrap()
-    }
-
     fn split_at(&mut self, surfaces: &[S]) -> Option<usize> {
-        let mut root_bound = surfaces[0].bounding_box();
-        for surface in &surfaces[1..] {
-            root_bound = root_bound.merge(&surface.bounding_box());
+        // Accumulate boxes from left to right.
+        let mut merge_left = Vec::with_capacity(surfaces.len());
+        merge_left.push(surfaces[0].bounding_box());
+        for s in &surfaces[1..] {
+            let last = merge_left.last().unwrap();
+            let merged = s.bounding_box().merge(last);
+            merge_left.push(merged);
         }
 
-        let (best_split, best_cost) = (1..surfaces.len())
+        // Accumulate boxes from right to left.
+        let mut merge_right = Vec::with_capacity(surfaces.len());
+        merge_right.push(surfaces.last().unwrap().bounding_box());
+        for s in surfaces.iter().rev().skip(1) {
+            let last = merge_right.last().unwrap();
+            let merged = s.bounding_box().merge(last);
+            merge_right.push(merged);
+        }
+        let root_bound = merge_left.last().unwrap();
+
+        let (best_split, best_cost) = (1..surfaces.len() - 1)
             .map(|split_idx| {
                 // Left box
-                let mut left = surfaces[0].bounding_box();
-                for surface in &surfaces[1..split_idx] {
-                    left = left.merge(&surface.bounding_box());
-                }
-                // Right box
-                let mut right = surfaces[split_idx].bounding_box();
-                for surface in &surfaces[split_idx..] {
-                    right = right.merge(&surface.bounding_box());
-                }
+                let left = &merge_left[split_idx - 1];
+                // The smallest box for right is at index 0 and indicates splitting at `len() - 2`.
+                // The largest box is at index `len() - 1` and indices no splitting at all.
+                let right = &merge_right[merge_right.len() - split_idx - 1];
                 let split_cost = TRAVERSAL_COST
                     + left.surface_area() * split_idx as f64 * INTERSECT_COST
                     + right.surface_area() * (surfaces.len() - split_idx) as f64 * INTERSECT_COST;
@@ -180,39 +130,11 @@ where
             .min_by_key(|(_, cost)| NonNan::new(*cost).unwrap())
             .unwrap();
 
-        if best_cost > (root_bound.surface_area() * surfaces.len() as f64 * INTERSECT_COST) {
+        if best_cost >= (root_bound.surface_area() * surfaces.len() as f64 * INTERSECT_COST) {
             // It's cheaper to make a leaf at this level than it is to split.
             None
         } else {
             Some(best_split)
-        }
-    }
-}
-
-struct SizedConstructionStrategy<T1, T2> {
-    threshold: usize,
-    small: T1,
-    big: T2,
-}
-
-impl<S, T1, T2> ConstructionStrategy<S> for SizedConstructionStrategy<T1, T2>
-where
-    T1: ConstructionStrategy<S>,
-    T2: ConstructionStrategy<S>,
-{
-    fn choose_axis(&mut self, surfaces: &[S]) -> usize {
-        if surfaces.len() <= self.threshold {
-            self.small.choose_axis(surfaces)
-        } else {
-            self.big.choose_axis(surfaces)
-        }
-    }
-
-    fn split_at(&mut self, surfaces: &[S]) -> Option<usize> {
-        if surfaces.len() <= self.threshold {
-            self.small.split_at(surfaces)
-        } else {
-            self.big.split_at(surfaces)
         }
     }
 }
@@ -229,10 +151,30 @@ where
 {
     fn new_with_strategy<T>(surfaces: &mut [S], strategy: &mut T) -> Self
     where
-        T: ConstructionStrategy<S>,
+        T: SplitStrategy<S>,
     {
-        // Choose the axis
-        let axis = strategy.choose_axis(surfaces);
+        // Choose the axis that has the widest span of centroids.
+        //
+        // This is the distance between the rightmost and leftmost
+        // bounding boxes on a given axis.
+        let axis =
+            (0usize..3)
+                .max_by_key(|i| {
+                    let mut min = f64::INFINITY;
+                    let mut max = 0.0;
+                    for surface in surfaces.iter() {
+                        let p = surface.bounding_box().centroid().get(*i);
+                        if p < min {
+                            min = p;
+                        }
+                        if p > max {
+                            max = p;
+                        }
+                    }
+                    NonNan::new(max - min).unwrap()
+                })
+                .unwrap();
+
         let comparator = |a: &S, b: &S| {
             let bba = a.bounding_box();
             let bbb = b.bounding_box();

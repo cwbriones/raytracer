@@ -69,7 +69,7 @@ impl SceneBuilder {
     }
 
     fn build(mut self) -> Scene {
-        let root = BVH::new_tiered(&mut self.surfaces, &mut rand::thread_rng(), 1024);
+        let root = BVH::new(&mut self.surfaces);
         Scene { root }
     }
 }
@@ -175,8 +175,8 @@ impl TracerConfig {
 fn scene() -> anyhow::Result<Scene> {
     let mut builder = SceneBuilder::new();
 
-    let material1 = Material::lambertian(Vec3::new(0.9, 0.9, 0.9));
-    let mesh = load_mesh("/Users/cwbriones/Desktop/lucy.obj", 0.005, material1)?;
+    let material1 = Material::lambertian(Vec3::new(0.808, 0.788, 0.746));
+    let mesh = load_mesh("/Users/cwbriones/Desktop/lucy.obj", 0.004, material1)?;
     mesh.triangles().for_each(|t| builder.add(t));
 
     Ok(builder.build())
@@ -245,7 +245,10 @@ fn load_mesh(path: &str, scale: f64, material: Material) -> anyhow::Result<Arc<M
     }
     let mesh_origin = (min_v + 0.5 * (max_v - min_v)).into();
 
-    let rotation = crate::geom::UnitQuaternion::rotation(Vec3::ihat(), (45.0f64).to_radians());
+    let rotate_about_x = crate::geom::UnitQuaternion::rotation(Vec3::ihat(), (90.0f64).to_radians());
+    let rotate_about_y = crate::geom::UnitQuaternion::rotation(Vec3::jhat(), (-100.0f64).to_radians());
+    let rotation = rotate_about_y * rotate_about_x;
+
     let indices = indices.iter().map(|u| *u as usize).collect::<Vec<_>>();
     for v in vertices.iter_mut() {
         let rotated = rotation.rotate_point(*v - mesh_origin) + mesh_origin;

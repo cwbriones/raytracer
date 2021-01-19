@@ -11,7 +11,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
 
-use anyhow::anyhow;
+use anyhow::{
+    anyhow,
+    Context,
+};
 use argh::FromArgs;
 use bvh::BVH;
 use camera::Camera;
@@ -179,7 +182,7 @@ fn scene() -> anyhow::Result<Scene> {
         ground_material,
     ));
 
-    // Put a sphere inside the glass ball.
+    // Put a sphere inside the glass teapot.
     // let glass = Material::dielectric(1.5);
     // let inner_mat = Material::lambertian(Vec3::new(0.2, 0.8, 0.2));
     // builder.add(Sphere::new(Point3::new(0., 1., 0.), 0.5, inner_mat));
@@ -205,54 +208,73 @@ fn scene() -> anyhow::Result<Scene> {
 }
 
 fn load_mesh(path: &str, scale: f64, material: Material) -> anyhow::Result<Arc<Mesh>> {
-    let (models, materials) = tobj::load_obj(path, true).expect("the file should exist");
-    println!("# of models: {}", models.len());
-    println!("# of materials: {}", materials.len());
-    for model in models {
-        println!("mesh: {}", model.name);
-        let ::tobj::Mesh {
-            positions,
-            normals,
-            indices,
-            ..
-        } = model.mesh;
-        println!("normals: {}", normals.len());
-        println!("vertices: {}", positions.len());
-        println!("indices: {}", indices.len());
-        if normals.len() % 3 != 0 {
-            panic!("normals had an unexpected length");
-        }
-        if indices.len() % 3 != 0 {
-            panic!("normals had an unexpected length");
-        }
-        let indices = indices.iter().map(|u| *u as usize).collect::<Vec<_>>();
-        let vertices = positions
-            .chunks_exact(3)
-            .map(|chunk| {
-                Point3::new(
-                    scale * chunk[0] as f64,
-                    scale * chunk[1] as f64,
-                    scale * chunk[2] as f64,
-                )
-            })
-            .collect::<Vec<_>>();
-        return if normals.len() > 0 {
-            // Normals were included, yay
-            let normals = normals
-                .chunks_exact(3)
-                .map(|chunk| Vec3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64))
-                .collect();
-            Ok(Arc::new(Mesh::new_with_normals(
-                indices, vertices, normals, material,
-            )))
-        } else {
-            // We need to compute the normals ourselves :(
-            Ok(Arc::new(Mesh::new(indices, vertices, material)))
-        };
+    let (models, materials) =
+        tobj::load_obj(path, true).context("could not load mesh from file")?;
+
+    if models.len() != 1 {
+        return Err(anyhow!("expected exactly one model, got: {}", models.len()));
     }
-    Err(anyhow!("could not load model"))
+    if materials.len() > 0 {
+        eprintln!(
+            "warning: {} materials found in OBJ file. Materials are not supported.",
+            materials.len()
+        );
+    }
+    let model = models.into_iter().next().unwrap(); // we already checked len above.
+
+    eprintln!("loaded mesh: {}", model.name);
+    let ::tobj::Mesh {
+        positions,
+        normals,
+        indices,
+        ..
+    } = model.mesh;
+    eprintln!("vertices: {}", positions.len());
+    eprintln!(
+        "indices: {} ({} triangles)",
+        indices.len(),
+        indices.len() / 3
+    );
+    eprintln!("normals: {}", normals.len());
+    if normals.len() % 3 != 0 {
+        return Err(anyhow!(
+            "normals had an unexpected length: {}",
+            normals.len()
+        ));
+    }
+    if indices.len() % 3 != 0 {
+        return Err(anyhow!(
+            "indices had an unexpected length: {}",
+            indices.len()
+        ));
+    }
+    let indices = indices.iter().map(|u| *u as usize).collect::<Vec<_>>();
+    let vertices = positions
+        .chunks_exact(3)
+        .map(|chunk| {
+            Point3::new(
+                scale * chunk[0] as f64,
+                scale * chunk[1] as f64,
+                scale * chunk[2] as f64,
+            )
+        })
+        .collect::<Vec<_>>();
+    return if normals.len() > 0 {
+        // Normals were included, yay
+        let normals = normals
+            .chunks_exact(3)
+            .map(|chunk| Vec3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64))
+            .collect();
+        Ok(Arc::new(Mesh::new_with_normals(
+            indices, vertices, normals, material,
+        )))
+    } else {
+        // We need to compute the normals ourselves :(
+        Ok(Arc::new(Mesh::new(indices, vertices, material)))
+    };
 }
 
+/// Create a random scene as shown in the final section of Ray Tracing in One Weekend.
 #[allow(unused)]
 fn random_scene<R: Rng>(mut rng: R) -> Scene {
     let mut objects = SceneBuilder::new();
@@ -338,6 +360,8 @@ fn main() -> anyhow::Result<()> {
                 let camera = Camera::builder(20.0, ASPECT_RATIO)
                     .from(Point3::new(7., 6., -10.))
                     .towards(Point3::new(0.4, 1.2, 0.))
+                    .focus_dist(12.91)
+                    .aperture(0.1)
                     .build();
 
                 (worker_id..(image_height as usize))

@@ -175,34 +175,9 @@ impl TracerConfig {
 fn scene() -> anyhow::Result<Scene> {
     let mut builder = SceneBuilder::new();
 
-    let ground_material = Material::lambertian(Vec3::new(0.5, 0.5, 0.5));
-    builder.add(Sphere::new(
-        Point3::new(0., -1000., 0.),
-        1000.,
-        ground_material,
-    ));
-
-    // Put a sphere inside the glass teapot.
-    // let glass = Material::dielectric(1.5);
-    // let inner_mat = Material::lambertian(Vec3::new(0.2, 0.8, 0.2));
-    // builder.add(Sphere::new(Point3::new(0., 1., 0.), 0.5, inner_mat));
-
-    let material1 = Material::metal(Vec3::new(0.2, 0.2, 0.2), 0.2);
-
-    // bunny was 12.0
-    let mesh = load_mesh("/Users/cwbriones/Desktop/teapot.obj", 1.0, material1)?;
+    let material1 = Material::lambertian(Vec3::new(0.9, 0.9, 0.9));
+    let mesh = load_mesh("/Users/cwbriones/Desktop/lucy.obj", 0.005, material1)?;
     mesh.triangles().for_each(|t| builder.add(t));
-
-    let material1 = Material::lambertian(Vec3::new(0.05, 0.2, 0.6));
-    builder.add(Sphere::new(Point3::new(-4., 1., 0.), 1.0, material1));
-    let material2 = Material::dielectric(1.5);
-    builder.add(Sphere::new(Point3::new(0., 1., -4.), 1.0, material2));
-    let material3 = Material::metal(Vec3::new(0.7, 0.6, 0.5), 0.0);
-    builder.add(Sphere::new(Point3::new(4., 1., 0.), 1.0, material3));
-    let material4 = Material::metal(Vec3::new(0.6, 0.5, 0.5), 0.2);
-    builder.add(Sphere::new(Point3::new(0., 1., 4.), 1.0, material4));
-    let material5 = Material::lambertian(Vec3::new(0.6, 0.2, 0.05));
-    builder.add(Sphere::new(Point3::new(4., 1., -4.), 1.0, material5));
 
     Ok(builder.build())
 }
@@ -248,17 +223,34 @@ fn load_mesh(path: &str, scale: f64, material: Material) -> anyhow::Result<Arc<M
             indices.len()
         ));
     }
-    let indices = indices.iter().map(|u| *u as usize).collect::<Vec<_>>();
-    let vertices = positions
+
+    // Compute all the vertices along with the model origin.
+    //
+    // NOTE: This origin is computed by using the center of the bounding box.
+    // Alternatively, we could find the center-of-mass by taking the weighted
+    // average of each face's center.
+    let mut vertices = positions
         .chunks_exact(3)
-        .map(|chunk| {
-            Point3::new(
-                scale * chunk[0] as f64,
-                scale * chunk[1] as f64,
-                scale * chunk[2] as f64,
-            )
-        })
+        .map(|chunk| Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64))
         .collect::<Vec<_>>();
+    let mut min_v = Point3::new(
+        ::std::f64::INFINITY,
+        ::std::f64::INFINITY,
+        ::std::f64::INFINITY,
+    );
+    let mut max_v = Point3::default();
+    for v in &vertices {
+        max_v = max_v.max_pointwise(&v);
+        min_v = min_v.min_pointwise(&v);
+    }
+    let mesh_origin = (min_v + 0.5 * (max_v - min_v)).into();
+
+    let rotation = crate::geom::UnitQuaternion::rotation(Vec3::ihat(), (45.0f64).to_radians());
+    let indices = indices.iter().map(|u| *u as usize).collect::<Vec<_>>();
+    for v in vertices.iter_mut() {
+        let rotated = rotation.rotate_point(*v - mesh_origin) + mesh_origin;
+        *v = scale * rotated;
+    }
     return if normals.len() > 0 {
         // Normals were included, yay
         let normals = normals
@@ -353,8 +345,8 @@ fn main() -> anyhow::Result<()> {
             let mut rng = small_rng(config.seed);
             s.spawn(move |_| {
                 let camera = Camera::builder(20.0, ASPECT_RATIO)
-                    .from(Point3::new(7., 6., -10.))
-                    .towards(Point3::new(0.4, 1.2, 0.))
+                    .from(Point3::new(0., 8., -10.))
+                    .towards(Point3::new(3., 0., 0.))
                     .focus_dist(12.91)
                     .aperture(0.1)
                     .build();

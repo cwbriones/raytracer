@@ -80,6 +80,15 @@ impl Display for Point3 {
     }
 }
 
+impl Mul<Point3> for f64 {
+    type Output = Point3;
+
+    #[inline]
+    fn mul(self, p: Point3) -> Point3 {
+        Point3(p.0 * self, p.1 * self, p.2 * self)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Vec3(f64, f64, f64);
 

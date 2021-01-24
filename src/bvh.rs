@@ -157,23 +157,22 @@ where
         //
         // This is the distance between the rightmost and leftmost
         // bounding boxes on a given axis.
-        let axis =
-            (0usize..3)
-                .max_by_key(|i| {
-                    let mut min = f64::INFINITY;
-                    let mut max = 0.0;
-                    for surface in surfaces.iter() {
-                        let p = surface.bounding_box().centroid().get(*i);
-                        if p < min {
-                            min = p;
-                        }
-                        if p > max {
-                            max = p;
-                        }
+        let axis = (0usize..3)
+            .max_by_key(|i| {
+                let mut min = f64::INFINITY;
+                let mut max = 0.0;
+                for surface in surfaces.iter() {
+                    let p = surface.bounding_box().centroid().get(*i);
+                    if p < min {
+                        min = p;
                     }
-                    NonNan::new(max - min).unwrap()
-                })
-                .unwrap();
+                    if p > max {
+                        max = p;
+                    }
+                }
+                NonNan::new(max - min).unwrap()
+            })
+            .unwrap();
 
         let comparator = |a: &S, b: &S| {
             let bba = a.bounding_box();

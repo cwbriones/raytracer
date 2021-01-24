@@ -8,12 +8,12 @@ edition = "2018"
 
 [dependencies]
 rand = {version = "0.8", features = ["small_rng"]}
-image = "0.23"
-crossbeam = "0.8"
-argh = "0.1"
-tobj = "2.0"
 anyhow = "1.0"
+crossbeam = "0.8"
+image = "0.23"
+structopt = "0.3"
 thiserror = "1.0"
+tobj = "2.0"
 
 [profile.release]
 # lto = true

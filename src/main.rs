@@ -15,7 +15,6 @@ use anyhow::{
     anyhow,
     Context,
 };
-use argh::FromArgs;
 use bvh::BVH;
 use camera::Camera;
 use geom::{
@@ -33,6 +32,7 @@ use rand::{
     Rng,
     SeedableRng,
 };
+use structopt::StructOpt;
 use surfaces::{
     Mesh,
     Sphere,
@@ -132,44 +132,28 @@ where
     acc / (n as f64)
 }
 
-#[derive(FromArgs)]
+#[derive(StructOpt)]
 /// A simple ray tracer implementation in rust.
 struct TracerConfig {
-    #[argh(option, short = 'n', default = "TracerConfig::default_samples()")]
-    /// the number of samples to take per pixel.
+    /// Number of samples to take per pixel.
+    #[structopt(long, short, default_value = "4")]
     num_samples: usize,
-    #[argh(option, short = 'o', default = "TracerConfig::default_output()")]
-    /// destination of the output image.
+    /// Destination of the output image.
     ///
     /// supported formats: png, jpg
+    #[structopt(long, short, default_value = "output.png")]
     output: String,
-    #[argh(option, default = "TracerConfig::default_threads()")]
-    /// the number of threads to use.
+    #[structopt(long, default_value = "4")]
+    /// Number of threads to use.
     threads: usize,
-    #[argh(option, default = "TracerConfig::default_width()")]
-    /// the output image width.
+    /// Output image width.
+    #[structopt(long, default_value = "400")]
     width: u32,
-    #[argh(option)]
-    /// A seed to use for RNG. By default the RNG will be seed through the OS's entropy source.
+    /// Seed to use for RNG.
+    ///
+    /// By default the RNG will be seeded through the OS-provided entropy source.
+    #[structopt(long)]
     seed: Option<u64>,
-}
-
-impl TracerConfig {
-    const fn default_threads() -> usize {
-        4
-    }
-
-    const fn default_samples() -> usize {
-        100
-    }
-
-    const fn default_width() -> u32 {
-        400
-    }
-
-    fn default_output() -> String {
-        "output.png".into()
-    }
 }
 
 fn scene() -> anyhow::Result<Scene> {
@@ -245,8 +229,10 @@ fn load_mesh(path: &str, scale: f64, material: Material) -> anyhow::Result<Arc<M
     }
     let mesh_origin = (min_v + 0.5 * (max_v - min_v)).into();
 
-    let rotate_about_x = crate::geom::UnitQuaternion::rotation(Vec3::ihat(), (90.0f64).to_radians());
-    let rotate_about_y = crate::geom::UnitQuaternion::rotation(Vec3::jhat(), (-100.0f64).to_radians());
+    let rotate_about_x =
+        crate::geom::UnitQuaternion::rotation(Vec3::ihat(), (90.0f64).to_radians());
+    let rotate_about_y =
+        crate::geom::UnitQuaternion::rotation(Vec3::jhat(), (-100.0f64).to_radians());
     let rotation = rotate_about_y * rotate_about_x;
 
     let indices = indices.iter().map(|u| *u as usize).collect::<Vec<_>>();
@@ -324,7 +310,7 @@ fn small_rng(seed: Option<u64>) -> impl Rng {
 }
 
 fn main() -> anyhow::Result<()> {
-    let config = argh::from_env::<TracerConfig>();
+    let config = TracerConfig::from_args();
 
     const ASPECT_RATIO: f64 = 3.0 / 2.0;
     let image_width = config.width;

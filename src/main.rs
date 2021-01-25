@@ -3,6 +3,7 @@ mod camera;
 mod geom;
 mod material;
 mod progress;
+mod scene;
 mod surfaces;
 mod trace;
 mod util;
@@ -11,10 +12,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
 
-use anyhow::{
-    anyhow,
-    Context,
-};
+use anyhow::anyhow;
 use bvh::BVH;
 use camera::Camera;
 use geom::{
@@ -34,7 +32,6 @@ use rand::{
 };
 use structopt::StructOpt;
 use surfaces::{
-    Mesh,
     Sphere,
     Surface,
 };
@@ -46,7 +43,7 @@ use trace::{
 use util::Klamp;
 
 #[derive(Clone)]
-struct Scene {
+pub struct Scene {
     root: BVH<Surface>,
 }
 
@@ -149,115 +146,50 @@ struct TracerConfig {
     /// Output image width.
     #[structopt(long, default_value = "400")]
     width: u32,
+    /// Output image height.
+    #[structopt(long)]
+    height: Option<u32>,
+    /// Output image aspect ratio [default: 1.5].
+    #[structopt(long, conflicts_with = "height")]
+    aspect_ratio: Option<f64>,
     /// Seed to use for RNG.
     ///
     /// By default the RNG will be seeded through the OS-provided entropy source.
     #[structopt(long)]
     seed: Option<u64>,
+    /// A scene file to load from configuration.
+    #[structopt(long)]
+    scene: Option<String>,
 }
 
-fn scene() -> anyhow::Result<Scene> {
-    let mut builder = SceneBuilder::new();
+impl TracerConfig {
+    const DEFAULT_ASPECT_RATIO: f64 = 1.5;
 
-    let material1 = Material::lambertian(Vec3::new(0.808, 0.788, 0.746));
-    let mesh = load_mesh("/Users/cwbriones/Desktop/lucy.obj", 0.004, material1)?;
-    mesh.triangles().for_each(|t| builder.add(t));
-
-    Ok(builder.build())
-}
-
-fn load_mesh(path: &str, scale: f64, material: Material) -> anyhow::Result<Arc<Mesh>> {
-    let (models, materials) =
-        tobj::load_obj(path, true).context("could not load mesh from file")?;
-
-    if models.len() != 1 {
-        return Err(anyhow!("expected exactly one model, got: {}", models.len()));
-    }
-    if materials.len() > 0 {
-        eprintln!(
-            "warning: {} materials found in OBJ file. Materials are not supported.",
-            materials.len()
-        );
-    }
-    let model = models.into_iter().next().unwrap(); // we already checked len above.
-
-    eprintln!("loaded mesh: {}", model.name);
-    let ::tobj::Mesh {
-        positions,
-        normals,
-        indices,
-        ..
-    } = model.mesh;
-    eprintln!("vertices: {}", positions.len());
-    eprintln!(
-        "indices: {} ({} triangles)",
-        indices.len(),
-        indices.len() / 3
-    );
-    eprintln!("normals: {}", normals.len());
-    if normals.len() % 3 != 0 {
-        return Err(anyhow!(
-            "normals had an unexpected length: {}",
-            normals.len()
-        ));
-    }
-    if indices.len() % 3 != 0 {
-        return Err(anyhow!(
-            "indices had an unexpected length: {}",
-            indices.len()
-        ));
+    fn height(&self) -> u32 {
+        if let Some(height) = self.height {
+            height
+        } else if let Some(aspect_ratio) = self.aspect_ratio {
+            (self.width as f64 / aspect_ratio) as u32
+        } else {
+            (self.width as f64 / TracerConfig::DEFAULT_ASPECT_RATIO) as u32
+        }
     }
 
-    // Compute all the vertices along with the model origin.
-    //
-    // NOTE: This origin is computed by using the center of the bounding box.
-    // Alternatively, we could find the center-of-mass by taking the weighted
-    // average of each face's center.
-    let mut vertices = positions
-        .chunks_exact(3)
-        .map(|chunk| Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64))
-        .collect::<Vec<_>>();
-    let mut min_v = Point3::new(
-        ::std::f64::INFINITY,
-        ::std::f64::INFINITY,
-        ::std::f64::INFINITY,
-    );
-    let mut max_v = Point3::default();
-    for v in &vertices {
-        max_v = max_v.max_pointwise(&v);
-        min_v = min_v.min_pointwise(&v);
+    fn aspect_ratio(&self) -> f64 {
+        if let Some(height) = self.height {
+            self.width as f64 / height as f64
+        } else if let Some(aspect_ratio) = self.aspect_ratio {
+            aspect_ratio
+        } else {
+            TracerConfig::DEFAULT_ASPECT_RATIO
+        }
     }
-    let mesh_origin = (min_v + 0.5 * (max_v - min_v)).into();
-
-    let rotate_about_x =
-        crate::geom::UnitQuaternion::rotation(Vec3::ihat(), (90.0f64).to_radians());
-    let rotate_about_y =
-        crate::geom::UnitQuaternion::rotation(Vec3::jhat(), (-100.0f64).to_radians());
-    let rotation = rotate_about_y * rotate_about_x;
-
-    let indices = indices.iter().map(|u| *u as usize).collect::<Vec<_>>();
-    for v in vertices.iter_mut() {
-        let rotated = rotation.rotate_point(*v - mesh_origin) + mesh_origin;
-        *v = scale * rotated;
-    }
-    return if normals.len() > 0 {
-        // Normals were included, yay
-        let normals = normals
-            .chunks_exact(3)
-            .map(|chunk| Vec3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64))
-            .collect();
-        Ok(Arc::new(Mesh::new_with_normals(
-            indices, vertices, normals, material,
-        )))
-    } else {
-        // We need to compute the normals ourselves :(
-        Ok(Arc::new(Mesh::new(indices, vertices, material)))
-    };
 }
 
 /// Create a random scene as shown in the final section of Ray Tracing in One Weekend.
 #[allow(unused)]
-fn random_scene<R: Rng>(mut rng: R) -> Scene {
+fn random_scene() -> Scene {
+    let mut rng = rand::thread_rng();
     let mut objects = SceneBuilder::new();
 
     let ground_material = Material::lambertian(Vec3::new(0.5, 0.5, 0.5));
@@ -312,34 +244,38 @@ fn small_rng(seed: Option<u64>) -> impl Rng {
 fn main() -> anyhow::Result<()> {
     let config = TracerConfig::from_args();
 
-    const ASPECT_RATIO: f64 = 3.0 / 2.0;
+    let aspect_ratio = config.aspect_ratio();
     let image_width = config.width;
     let threads = config.threads;
-    let image_height = (image_width as f64 / ASPECT_RATIO) as u32;
+    let image_height = config.height();
     let samples_per_pixel: usize = config.num_samples;
     let rays = (image_width * image_height) as usize * samples_per_pixel;
     let max_depth = 50;
 
     let start = Instant::now();
 
-    let scene = Arc::new(scene()?);
+    let (scene, camera) = if let Some(ref path) = config.scene {
+        scene::load_scene(&path, aspect_ratio)?
+    } else {
+        let default_camera = Camera::builder(20.0, aspect_ratio)
+            .from(Point3::new(0., 8., -10.))
+            .towards(Point3::new(3., 0., 0.))
+            .focus_dist(12.91)
+            .aperture(0.1)
+            .build();
+        (random_scene(), default_camera)
+    };
 
     let progress = progress::ProgressBar::new((image_width * image_height) as usize);
     let img = crossbeam::scope(|s| {
         let img = Arc::new(Mutex::new(ImageBuffer::new(image_width, image_height)));
         for worker_id in 0..threads {
             let scene = scene.clone();
+            let camera = camera.clone();
             let progress_recorder = progress.create_recorder();
             let img = img.clone();
             let mut rng = small_rng(config.seed);
             s.spawn(move |_| {
-                let camera = Camera::builder(20.0, ASPECT_RATIO)
-                    .from(Point3::new(0., 8., -10.))
-                    .towards(Point3::new(3., 0., 0.))
-                    .focus_dist(12.91)
-                    .aperture(0.1)
-                    .build();
-
                 (worker_id..(image_height as usize))
                     .step_by(threads)
                     .flat_map(|j| (0..image_width).map(move |i| (i, j)))

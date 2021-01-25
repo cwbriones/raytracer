@@ -62,6 +62,12 @@ impl Point3 {
     }
 }
 
+impl From<[f64; 3]> for Point3 {
+    fn from(arr: [f64; 3]) -> Self {
+        Point3(arr[0], arr[1], arr[2])
+    }
+}
+
 impl Into<Vec3> for Point3 {
     fn into(self) -> Vec3 {
         Vec3(self.0, self.1, self.2)
@@ -198,6 +204,12 @@ impl Distribution<Vec3> for Standard {
     #[inline]
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Vec3 {
         Vec3(rng.gen(), rng.gen(), rng.gen())
+    }
+}
+
+impl From<[f64; 3]> for Vec3 {
+    fn from(arr: [f64; 3]) -> Self {
+        Vec3(arr[0], arr[1], arr[2])
     }
 }
 

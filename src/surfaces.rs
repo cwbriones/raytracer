@@ -80,8 +80,12 @@ pub struct Mesh {
     indices: Vec<usize>,
     vertices: Vec<Point3>,
     normals: Vec<Vec3>,
-    material: Material,
     triangles: usize,
+}
+
+#[derive(Debug)]
+struct MeshTransform {
+    material: Material,
 }
 
 impl Mesh {
@@ -90,7 +94,7 @@ impl Mesh {
     /// This will compute all of the vertex normals for the mesh. If they are already
     /// available through some other means (e.g. loaded from a file) you should instead use
     /// `new_with_normals` to save on unnecessary computation.
-    pub fn new(indices: Vec<usize>, vertices: Vec<Point3>, material: Material) -> Self {
+    pub fn new(indices: Vec<usize>, vertices: Vec<Point3>) -> Self {
         let mut normals = vec![Vec3::default(); vertices.len()];
         for chunk in indices.chunks_exact(3) {
             let v0 = vertices[chunk[0]];
@@ -112,7 +116,7 @@ impl Mesh {
             // included (because of total "internal" reflection).
             *n = 1.0 * n.unit();
         }
-        Self::new_with_normals(indices, vertices, normals, material)
+        Self::new_with_normals(indices, vertices, normals)
     }
 
     /// Create a new mesh given its vertices and surface normals.
@@ -120,21 +124,20 @@ impl Mesh {
         indices: Vec<usize>,
         vertices: Vec<Point3>,
         normals: Vec<Vec3>,
-        material: Material,
     ) -> Self {
         let triangles = indices.len() / 3;
         Self {
             indices,
             vertices,
             normals,
-            material,
             triangles,
         }
     }
 
     /// Return an iterator over the triangles contained within this mesh.
-    pub fn triangles(self: Arc<Self>) -> impl Iterator<Item = Triangle> {
-        (0..self.triangles).map(move |idx| Triangle::new(self.clone(), idx))
+    pub fn triangles(self: Arc<Self>, material: Material) -> impl Iterator<Item = Triangle> {
+        let transform = Arc::new(MeshTransform { material });
+        (0..self.triangles).map(move |idx| Triangle::new(self.clone(), transform.clone(), idx))
     }
 }
 
@@ -144,11 +147,20 @@ pub struct Triangle {
     /// Location in the mesh.
     idx: usize,
     mesh: Arc<Mesh>,
+    // This doesn't save any space now but should once support for generic
+    // transformations is added while still reusing the underlying mesh.
+    //
+    // e.g. scaling, translation, rotation.
+    transform: Arc<MeshTransform>,
 }
 
 impl Triangle {
-    fn new(mesh: Arc<Mesh>, idx: usize) -> Self {
-        Triangle { mesh, idx }
+    fn new(mesh: Arc<Mesh>, transform: Arc<MeshTransform>, idx: usize) -> Self {
+        Triangle {
+            mesh,
+            transform,
+            idx,
+        }
     }
 
     #[inline]
@@ -215,7 +227,7 @@ impl Triangle {
             return None;
         }
         let normal = u * self.n1() + v * self.n2() + (1f64 - u - v) * self.n0();
-        Some(Hit::new(ray, t, normal, &self.mesh.material))
+        Some(Hit::new(ray, t, normal, &self.transform.material))
     }
 
     pub fn bounding_box(&self) -> AABB {

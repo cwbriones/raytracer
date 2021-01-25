@@ -1,0 +1,26 @@
+camera:
+    fov: 20.0
+    from: [0.0, 8.0, -10.0]
+    towards: [3.0, 0.0, 0.0]
+    focus_distance: 12.91
+    aperture: 0.1
+
+scene:
+    meshes:
+        - name: lucy
+          path: /Users/cwbriones/Desktop/lucy.obj
+    surfaces:
+        - type: mesh
+          name: lucy
+          material:
+              - type: "lambertian"
+              - albedo: cecac1
+          transform:
+              - type: scale
+                factor: 0.004
+              - type: rotate
+                axis: x
+                angle: 90.0
+              - type: rotate
+                axis: y
+                angle: -100.0

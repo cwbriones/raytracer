@@ -1,0 +1,59 @@
+camera:
+    fov: 20.0
+    from: [7.0, 6.0, -10.0]
+    towards: [0.4, 1.2, 0.0]
+    # focus_distance: 12.91
+    # aperture: 0.1
+
+scene:
+    meshes:
+        - name: teapot
+          path: /Users/cwbriones/Desktop/teapot.obj
+    surfaces:
+        # ground
+        - type: sphere
+          radius: 1000
+          position: [0.0, -1000.0, 0.0]
+          material:
+              type: lambertian
+              albedo: [0.5, 0.5, 0.5]
+        - type: mesh
+          name: teapot
+          material: { type: "metal", albedo: '333333', fuzz: 0.2 }
+          transform:
+              # - { type: "scale", factor: 1.0 }
+              - { type: "rotate", axis: [0.0, 0.0, 1.0], angle: 90.0 }
+              # - { type: "world_rotate", origin: [0.0, 0.0, 0.0], angle: 90.0 }
+              # - { type: "translate", origin: [0.0, 0.0, 0.0]}
+        - type: sphere
+          radius: 1
+          position: [-4, 1, 0]
+          material:
+              type: lambertian
+              albedo: 1a49a9
+        - type: sphere
+          radius: 1
+          position: [0, 1, -4]
+          material:
+              type: dielectric
+              index: 1.5
+        - type: sphere
+          radius: 1
+          position: [4, 1, 0]
+          material:
+              type: metal
+              albedo: b29980
+              fuzz: 0.2
+        - type: sphere
+          radius: 1
+          position: [0, 1, 4]
+          material:
+              type: metal
+              albedo: e43f44
+              fuzz: 0.2
+        - type: sphere
+          radius: 1
+          position: [4, 1, -4]
+          material:
+              type: lambertian
+              albedo: 00d65e

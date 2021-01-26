@@ -10,11 +10,12 @@ use std::ops::Sub;
 use rand::distributions::Distribution;
 use rand::distributions::Standard;
 use rand::Rng;
+use serde::Deserialize;
 
 // TODO: This can probably be made simpler using a phantom type to distinguish absolute
 // vs relative coordinates.
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 pub struct Point3(f64, f64, f64);
 
 impl Point3 {
@@ -95,7 +96,7 @@ impl Mul<Point3> for f64 {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 pub struct Vec3(f64, f64, f64);
 
 impl Display for Vec3 {
@@ -190,6 +191,14 @@ impl Vec3 {
     // #[inline]
     pub fn get(&self, i: usize) -> f64 {
         [self.0, self.1, self.2][i]
+    }
+
+    pub fn lerp(&self, to: Vec3, t: f64) -> Vec3 {
+        Vec3::new(
+            (1.0 - t) * self.0 + t * to.0,
+            (1.0 - t) * self.1 + t * to.1,
+            (1.0 - t) * self.2 + t * to.2,
+        )
     }
 
     #[inline]
@@ -389,7 +398,6 @@ impl UnitQuaternion {
     }
 
     /// Create a quaternion from a desired rotation around an axis.
-    #[allow(unused)]
     pub fn rotation(axis: Vec3, angle: f64) -> Self {
         let cos = (angle / 2.0).cos();
         let sin = (angle / 2.0).sin();
@@ -412,7 +420,6 @@ impl UnitQuaternion {
     }
 
     /// Rotate a point using this quaternion.
-    #[allow(unused)]
     pub fn rotate_point(&self, direction: Point3) -> Point3 {
         let lhs = UnitQuaternion {
             x: direction.x(),

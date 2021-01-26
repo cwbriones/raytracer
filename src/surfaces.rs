@@ -73,7 +73,7 @@ impl Hittable for Sphere {
 /// A mesh encapulates a set of vertices along with a set of indices referencing those vertices in
 /// order to efficiently store a set of triangles that form a complete model.
 ///
-/// A mesh is not itself an object, but provides a method to inject the triangles comprising the
+/// A mesh is not itself a `crate::surface::Hittable`, but provides a method to inject the triangles comprising the
 /// mesh into the scene.
 #[derive(Debug)]
 pub struct Mesh {
@@ -211,7 +211,7 @@ impl Triangle {
         let tvec = ray.origin() - self.v0();
         let u = tvec.dot(&pvec) * inv_det;
 
-        if u < 0.0 || u > 1.0 {
+        if !(0.0..=1.0).contains(&u) {
             return None;
         }
 

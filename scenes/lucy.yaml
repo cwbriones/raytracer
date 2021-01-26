@@ -1,26 +1,33 @@
 camera:
-    fov: 20.0
-    from: [0.0, 8.0, -10.0]
-    towards: [3.0, 0.0, 0.0]
+    fov: 30.0
+    from: [0.0, 5.0, -12.0]
+    towards: [0.0, 0.0, 0.0]
     focus_distance: 12.91
     aperture: 0.1
 
+
 scene:
-    meshes:
-        - name: lucy
-          path: /Users/cwbriones/Desktop/lucy.obj
     surfaces:
-        - type: mesh
-          name: lucy
+        # ground
+        - type: sphere
+          radius: 1000
+          position: [0.0, -1003.45, 0.0]
           material:
-              - type: "lambertian"
-              - albedo: cecac1
+              type: lambertian
+              albedo: [0.5, 0.5, 0.5]
+        - type: mesh
+          path: lucy.obj
+          material:
+              type: lambertian
+              albedo: cecac1
           transform:
-              - type: scale
-                factor: 0.004
               - type: rotate
                 axis: x
                 angle: 90.0
-              - type: rotate
-                axis: y
-                angle: -100.0
+              # - type: rotate
+              #   axis: z
+              #   angle: -100.0
+              - type: scale
+                factor: 0.004
+              - type: translate
+                dir: [0, 1, 0]

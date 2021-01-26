@@ -14,9 +14,9 @@ use crate::surfaces::Sphere;
 /// Create a random scene as shown in the final section of Ray Tracing in One Weekend.
 pub fn one_weekend(aspect_ratio: f64) -> (Scene, Camera) {
     let camera = Camera::builder(20.0, aspect_ratio)
-        .from(Point3::new(0., 8., -10.))
-        .towards(Point3::new(3., 0., 0.))
-        .focus_dist(12.91)
+        .from(Point3::new(13., 2., 3.))
+        .towards(Point3::new(0., 0., 0.))
+        .focus_dist(10.)
         .aperture(0.1)
         .build();
 

@@ -17,8 +17,9 @@ scene:
         - type: mesh
           path: teapot.obj
           material: { type: "metal", albedo: '333333', fuzz: 0.2 }
-          # transform:
-          #     - { type: "rotate", axis: [0.0, 0.0, 1.0], angle: 90.0 }
+          transform:
+              - type: translate
+                dir: [0.0, 1.575, 0.0]
         - type: sphere
           radius: 1
           position: [-4, 1, 0]

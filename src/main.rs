@@ -23,7 +23,6 @@ use rand::{
     SeedableRng,
 };
 use structopt::StructOpt;
-use util::Klamp;
 
 #[derive(StructOpt)]
 /// A simple ray tracer implementation in rust.
@@ -125,9 +124,9 @@ fn main() -> anyhow::Result<()> {
                         });
                         progress_recorder.record();
                         let mut guard = img.lock().unwrap();
-                        let r = 256. * (color_vec.x()).sqrt().klamp(0.0, 0.99);
-                        let g = 256. * (color_vec.y()).sqrt().klamp(0.0, 0.99);
-                        let b = 256. * (color_vec.z()).sqrt().klamp(0.0, 0.99);
+                        let r = 256. * (color_vec.x()).sqrt().clamp(0.0, 0.99);
+                        let g = 256. * (color_vec.y()).sqrt().clamp(0.0, 0.99);
+                        let b = 256. * (color_vec.z()).sqrt().clamp(0.0, 0.99);
                         guard.put_pixel(
                             i,
                             image_height - j as u32 - 1,

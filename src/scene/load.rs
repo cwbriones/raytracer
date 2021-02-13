@@ -275,9 +275,9 @@ enum Material {
     Metal { albedo: Albedo, fuzz: f64 },
 }
 
-impl Into<crate::material::Material> for &Material {
-    fn into(self) -> crate::material::Material {
-        match *self {
+impl From<&Material> for crate::material::Material {
+    fn from(material: &Material) -> Self {
+        match *material {
             Material::Lambertian { ref albedo } => crate::material::Material::lambertian(albedo.0),
             Material::Dielectric { index } => crate::material::Material::dielectric(index),
             Material::Metal { ref albedo, fuzz } => {

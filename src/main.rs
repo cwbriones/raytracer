@@ -1,3 +1,4 @@
+#![allow(clippy::suspicious_operation_groupings)]
 mod bvh;
 mod camera;
 mod geom;

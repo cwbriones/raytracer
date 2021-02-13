@@ -52,17 +52,17 @@ impl MaterialKind {
     #[inline(always)]
     fn scatter<R: Rng>(&self, ray: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
         match *self {
-            Self::Lambertian => lambertian_scatter(ray, hit, rng),
+            Self::Lambertian => Some(lambertian_scatter(ray, hit, rng)),
             Self::Metal(fuzz) => metallic_scatter(fuzz, ray, hit, rng),
             Self::Dielectric(refractive_index) => {
-                dielectric_scatter(refractive_index, ray, hit, rng)
+                Some(dielectric_scatter(refractive_index, ray, hit, rng))
             }
         }
     }
 }
 
 #[inline(always)]
-fn lambertian_scatter<R: Rng>(_: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
+fn lambertian_scatter<R: Rng>(_: &Ray, hit: &Hit, rng: &mut R) -> Ray {
     // True lambertian reflection utilizes vectors on the unit sphere,
     // not within it. However, the "approximation" with interior sampling
     // is somewhat more intuitive. The difference amounts to normalizing
@@ -79,8 +79,7 @@ fn lambertian_scatter<R: Rng>(_: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
         scatter_direction = hit.normal;
     }
 
-    let scattered = Ray::new(hit.point, scatter_direction);
-    Some(scattered)
+    Ray::new(hit.point, scatter_direction)
 }
 
 #[inline(always)]
@@ -95,12 +94,7 @@ fn metallic_scatter<R: Rng>(fuzz: f64, ray: &Ray, hit: &Hit, rng: &mut R) -> Opt
 }
 
 #[inline(always)]
-fn dielectric_scatter<R: Rng>(
-    refractive_index: f64,
-    ray: &Ray,
-    hit: &Hit,
-    rng: &mut R,
-) -> Option<Ray> {
+fn dielectric_scatter<R: Rng>(refractive_index: f64, ray: &Ray, hit: &Hit, rng: &mut R) -> Ray {
     let refraction_ratio = if hit.front_face {
         1.0 / refractive_index
     } else {
@@ -117,7 +111,7 @@ fn dielectric_scatter<R: Rng>(
         } else {
             refract(&unit_dir, &hit.normal, refraction_ratio)
         };
-    Some(Ray::new(hit.point, scatter_dir))
+    Ray::new(hit.point, scatter_dir)
 }
 
 fn reflectance(cosine: f64, refractive_index: f64) -> f64 {

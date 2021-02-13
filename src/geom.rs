@@ -69,9 +69,9 @@ impl From<[f64; 3]> for Point3 {
     }
 }
 
-impl Into<Vec3> for Point3 {
-    fn into(self) -> Vec3 {
-        Vec3(self.0, self.1, self.2)
+impl From<Point3> for Vec3 {
+    fn from(point: Point3) -> Self {
+        Vec3(point.0, point.1, point.2)
     }
 }
 

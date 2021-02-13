@@ -267,15 +267,15 @@ impl Bounded for Surface {
     }
 }
 
-impl Into<Surface> for Sphere {
-    fn into(self) -> Surface {
-        Surface::Sphere(self)
+impl From<Sphere> for Surface {
+    fn from(sphere: Sphere) -> Self {
+        Surface::Sphere(sphere)
     }
 }
 
-impl Into<Surface> for Triangle {
-    fn into(self) -> Surface {
-        Surface::Triangle(self)
+impl From<Triangle> for Surface {
+    fn from(triangle: Triangle) -> Self {
+        Surface::Triangle(triangle)
     }
 }
 

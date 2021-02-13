@@ -29,7 +29,9 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install the stable toolchain
-        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+        run: |
+          ./ci/rustup.sh install stable
+          rustup set override stable
 
       - name: Build
         run: cargo build
@@ -63,13 +65,12 @@ jobs:
 
       - name: Install the stable toolchain
         run: |
-          ./ci/install-rustup.sh
-          rustup install stable
+          ./ci/rustup.sh install stable
           rustup set override stable
 
       - name: Install the nightly toolchain
         run: |
-          rustup install nightly
+          ./ci/rustup.sh install nightly
 
       - name: cargo fmt
         run: cargo +nightly fmt --all -- --check

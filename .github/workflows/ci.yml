@@ -30,7 +30,8 @@ jobs:
 
       - name: Install the stable toolchain
         run: |
-          ./ci/rustup.sh install stable
+          ./ci/install-rustup.sh
+          rustup install stable
           rustup override set stable
 
       - name: Build
@@ -65,12 +66,14 @@ jobs:
 
       - name: Install the stable toolchain
         run: |
-          ./ci/rustup.sh install stable
+          ./ci/install-rustup.sh
+          rustup install stable
           rustup override set stable
 
       - name: Install the nightly toolchain
         run: |
-          ./ci/rustup.sh install nightly
+          ./ci/install-rustup.sh
+          rustup install nightly
 
       - name: cargo fmt
         run: cargo +nightly fmt --all -- --check

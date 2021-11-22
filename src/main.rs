@@ -18,12 +18,23 @@ use image::{
     self,
     ImageBuffer,
 };
+use once_cell::sync::Lazy;
 use rand::rngs::SmallRng;
 use rand::{
     Rng,
     SeedableRng,
 };
 use structopt::StructOpt;
+
+static NUM_CPUS: Lazy<String> = Lazy::new(|| num_cpus::get().to_string());
+
+static THREADS_HELP: Lazy<String> = Lazy::new(|| {
+    format!(
+        "Number of threads to use [default: {}]\n\n\
+             Defaults to the number of logical cpus.",
+        &*NUM_CPUS
+    )
+});
 
 #[derive(StructOpt)]
 /// A simple ray tracer implementation in rust.
@@ -36,8 +47,10 @@ struct TracerOpt {
     /// supported formats: png, jpg
     #[structopt(long, short, default_value = "output.png")]
     output: String,
-    #[structopt(long, default_value = "4")]
+    #[structopt(long, short = "t", help(&THREADS_HELP), default_value(&NUM_CPUS))]
     /// Number of threads to use.
+    ///
+    /// Defaults to the logical number of cpus.
     threads: usize,
     /// Output image width.
     #[structopt(long, default_value = "400")]

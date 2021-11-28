@@ -1,0 +1,35 @@
+camera:
+    fov: 25.0
+    from: [7.0, 6.0, -10.0]
+    towards: [0, 1, 0]
+
+scene:
+    surfaces:
+        # ground
+        - type: sphere
+          radius: 1000
+          position: [0.0, -1000.0, 0.0]
+          material:
+              type: lambertian
+              albedo: [0.5, 0.5, 0.5]
+        - type: mesh
+          path: ./amodels/teapot.obj.gz
+          material:
+              type: metal
+              albedo: '6f6f6f'
+              fuzz: 0
+          transform:
+              - type: translate
+                dir: [0, 1.575, -3]
+        - type: mesh
+          path: ./models/teapot.obj.gz
+          material:
+              type: metal
+              albedo: 'ae8975'
+              fuzz: 0
+          transform:
+              - type: rotate
+                axis: y
+                angle: 180
+              - type: translate
+                dir: [0, 1.575, 3.0]

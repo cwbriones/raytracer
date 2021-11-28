@@ -1,0 +1,44 @@
+camera:
+    fov: 20.0
+    from: [-2, 2, 1]
+    towards: [0, 0, -1]
+    # focus_distance: 12.91
+    # aperture: 0.1
+
+scene:
+    surfaces:
+        # ground
+        - type: sphere
+          radius: 100
+          position: [0.0, -100.5, -1.0]
+          material:
+              type: lambertian
+              albedo: [0.8, 0.8, 0.0]
+        # center
+        - type: sphere
+          radius: .5
+          position: [0, 0, -1]
+          material:
+              type: lambertian
+              albedo: [0.1, 0.2, 0.5]
+        # left
+        - type: sphere
+          radius: .5
+          position: [-1, 0, -1]
+          material:
+              type: dielectric
+              index: 1.5
+        - type: sphere
+          radius: -.45
+          position: [-1, 0, -1]
+          material:
+              type: dielectric
+              index: 1.5
+        # right
+        - type: sphere
+          radius: .5
+          position: [1, 0, -1]
+          material:
+              type: metal
+              albedo: [0.8, 0.6, 0.2]
+              fuzz: 0

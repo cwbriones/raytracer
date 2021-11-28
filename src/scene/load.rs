@@ -6,7 +6,10 @@
 /// since those are unlikely to change.
 use std::fmt;
 use std::fs::File;
+use std::io;
+use std::io::BufRead;
 use std::io::BufReader;
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -33,27 +36,31 @@ use crate::surfaces;
 /// Load a scene from the given path.
 ///
 /// The camera will be configured with the given aspect ratio.
-pub fn load_scene(path: &str, aspect_ratio: f64) -> anyhow::Result<(Scene, Camera)> {
-    let file = File::open(path).with_context(|| format!("could not load scene file {}", path))?;
+pub fn load_scene<P: AsRef<Path>>(path: P, aspect_ratio: f64) -> anyhow::Result<(Scene, Camera)> {
+    let path = path.as_ref();
+    let file = File::open(path)?;
     let reader = BufReader::new(file);
 
     let config = serde_yaml::from_reader::<_, Config>(reader)?;
 
     if config.scene.surfaces.is_empty() {
-        return Err(anyhow!("scene '{}' is empty", path));
+        return Err(anyhow!("scene is empty"));
     }
 
     let mut builder = Scene::builder();
     for surface in &config.scene.surfaces {
         match surface {
             Surface::Mesh {
-                path,
+                path: relpath,
                 material,
                 transform,
             } => {
-                let mesh = load_mesh(path, transform).with_context(|| {
-                    format!("could not load mesh at {}", path.to_string_lossy())
-                })?;
+                let mesh_path = path
+                    .parent()
+                    .map(|p| p.join(relpath))
+                    .ok_or_else(|| anyhow!("invalid mesh path: '{}'", relpath.display()))?;
+                let mesh = load_mesh(&mesh_path, transform)
+                    .with_context(|| format!("could not load mesh at '{}'", path.display()))?;
                 mesh.triangles(material.into()).for_each(|t| builder.add(t));
             }
             Surface::Sphere {
@@ -70,12 +77,16 @@ pub fn load_scene(path: &str, aspect_ratio: f64) -> anyhow::Result<(Scene, Camer
     Ok((builder.build(), config.camera.build(aspect_ratio)))
 }
 
-fn load_mesh(
-    path: &std::path::Path,
+fn load_mesh<P: AsRef<Path>>(
+    path: P,
     transform: &[Transform],
 ) -> anyhow::Result<Arc<surfaces::Mesh>> {
-    let (models, materials) =
-        tobj::load_obj(path, true).context("could not load mesh from file")?;
+    let mut reader = reader_at(path)?;
+    let (models, materials) = tobj::load_obj_buf(&mut reader, true, |_| {
+        // Since we don't support materials right now, just fail immediately.
+        Err(tobj::LoadError::GenericFailure)
+    })
+    .context("could not load mesh from file")?;
 
     if models.len() != 1 {
         return Err(anyhow!("expected exactly one model, got: {}", models.len()));
@@ -161,6 +172,18 @@ fn load_mesh(
             indices, vertices, normals,
         )))
     };
+}
+
+fn reader_at<P: AsRef<Path>>(path: P) -> Result<Box<dyn BufRead>, io::Error> {
+    let path = path.as_ref();
+    let file = File::open(path)?;
+    if let Some("gz") = path.extension().and_then(|s| s.to_str()) {
+        // Unfortunately, the GzDecoder doesn't implement BufRead itself
+        // so we need two levels of buffering (input buffer, output buffer).
+        let reader = flate2::read::GzDecoder::new(file);
+        return Ok(Box::new(BufReader::new(reader)));
+    }
+    return Ok(Box::new(BufReader::new(file)));
 }
 
 /// Compute the center of the mesh.

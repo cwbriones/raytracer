@@ -16,7 +16,7 @@ scene:
               type: lambertian
               albedo: [0.5, 0.5, 0.5]
         - type: mesh
-          path: lucy.obj
+          path: ./models/lucy.obj.gz
           material:
               type: lambertian
               albedo: cecac1

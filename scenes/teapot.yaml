@@ -15,7 +15,7 @@ scene:
               type: lambertian
               albedo: [0.5, 0.5, 0.5]
         - type: mesh
-          path: teapot.obj
+          path: ./models/teapot.obj.gz
           material: { type: "metal", albedo: '333333', fuzz: 0.2 }
           transform:
               - type: translate

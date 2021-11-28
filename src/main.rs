@@ -14,6 +14,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use anyhow::anyhow;
+use anyhow::Context;
 use image::{
     self,
     ImageBuffer,
@@ -109,7 +110,8 @@ fn main() -> anyhow::Result<()> {
     let start = Instant::now();
 
     let (scene, camera) = if let Some(ref path) = config.scene {
-        scene::load_scene(&path, aspect_ratio)?
+        scene::load_scene(&path, aspect_ratio)
+            .with_context(|| format!("load scene file '{}'", path))?
     } else {
         scene::example::one_weekend(aspect_ratio)
     };

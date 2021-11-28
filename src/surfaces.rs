@@ -6,11 +6,11 @@ use crate::geom::{
 };
 use crate::material::Material;
 use crate::trace::{
+    Aabb,
     Bounded,
     Hit,
     Hittable,
     Ray,
-    AABB,
 };
 
 #[derive(Debug, Clone)]
@@ -31,10 +31,10 @@ impl Sphere {
 }
 
 impl Bounded for Sphere {
-    fn bounding_box(&self) -> AABB {
+    fn bounding_box(&self) -> Aabb {
         let min = self.center - Vec3::new(self.radius, self.radius, self.radius);
         let max = self.center + Vec3::new(self.radius, self.radius, self.radius);
-        AABB::new(min, max)
+        Aabb::new(min, max)
     }
 }
 
@@ -230,7 +230,7 @@ impl Triangle {
         Some(Hit::new(ray, t, normal, &self.transform.material))
     }
 
-    pub fn bounding_box(&self) -> AABB {
+    pub fn bounding_box(&self) -> Aabb {
         let min = self
             .v0()
             .min_pointwise(&self.v1())
@@ -239,7 +239,7 @@ impl Triangle {
             .v0()
             .max_pointwise(&self.v1())
             .max_pointwise(&self.v2());
-        AABB::new(min, max)
+        Aabb::new(min, max)
     }
 }
 
@@ -259,7 +259,7 @@ impl Hittable for Surface {
 }
 
 impl Bounded for Surface {
-    fn bounding_box(&self) -> AABB {
+    fn bounding_box(&self) -> Aabb {
         match *self {
             Self::Sphere(ref sphere) => sphere.bounding_box(),
             Self::Triangle(ref triangle) => triangle.bounding_box(),

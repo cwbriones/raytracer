@@ -183,7 +183,7 @@ fn reader_at<P: AsRef<Path>>(path: P) -> Result<Box<dyn BufRead>, io::Error> {
         let reader = flate2::read::GzDecoder::new(file);
         return Ok(Box::new(BufReader::new(reader)));
     }
-    return Ok(Box::new(BufReader::new(file)));
+    Ok(Box::new(BufReader::new(file)))
 }
 
 /// Compute the center of the mesh.
@@ -199,8 +199,8 @@ fn compute_mesh_center(vertices: &[Point3]) -> Vec3 {
     );
     let mut max_v = Point3::default();
     for v in vertices {
-        max_v = max_v.max_pointwise(&v);
-        min_v = min_v.min_pointwise(&v);
+        max_v = max_v.max_pointwise(v);
+        min_v = min_v.min_pointwise(v);
     }
     (min_v + 0.5 * (max_v - min_v)).into()
 }
@@ -320,7 +320,7 @@ impl FromStr for Albedo {
         if s.len() != 6 {
             return Err(anyhow!("expected hex color format aabbcc, got {}", s));
         }
-        let parsed = u32::from_str_radix(&s, 16).context("could not parse hex color")?;
+        let parsed = u32::from_str_radix(s, 16).context("could not parse hex color")?;
         let bytes: [u8; 4] = parsed.to_be_bytes();
 
         Ok(Albedo(Vec3::new(

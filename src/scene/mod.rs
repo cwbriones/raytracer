@@ -1,6 +1,6 @@
 use rand::Rng;
 
-use crate::bvh::BVH;
+use crate::bvh::Bvh;
 use crate::geom::Vec3;
 use crate::surfaces::Surface;
 use crate::trace::Hittable;
@@ -16,7 +16,7 @@ pub use load::load_scene;
 
 #[derive(Clone)]
 pub struct Scene {
-    root: BVH<Surface>,
+    root: Bvh<Surface>,
 }
 
 impl Scene {
@@ -40,7 +40,7 @@ impl SceneBuilder {
     }
 
     pub fn build(mut self) -> Scene {
-        let root = BVH::new(&mut self.surfaces);
+        let root = Bvh::new(&mut self.surfaces);
         Scene { root }
     }
 }

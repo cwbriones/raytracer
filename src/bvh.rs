@@ -3,11 +3,11 @@ use std::sync::Arc;
 use rand::Rng;
 
 use crate::trace::{
+    Aabb,
     Bounded,
     Hit,
     Hittable,
     Ray,
-    AABB,
 };
 use crate::util::NonNan;
 
@@ -32,18 +32,18 @@ const TRAVERSAL_COST: f64 = 2.0;
 /// level by comparing costs of all possible splits in addition to the option of not splitting at
 /// all.
 #[derive(Clone)]
-pub struct BVH<S> {
+pub struct Bvh<S> {
     root: BVHNode<S>,
 }
 
-impl<S> BVH<S>
+impl<S> Bvh<S>
 where
     S: Hittable + Bounded + Clone,
 {
     /// Construct a BVH using the Surface-Area-Heuristic.
     #[allow(unused)]
     pub fn new(surfaces: &mut [S]) -> Self {
-        BVH {
+        Bvh {
             root: BVHNode::new_with_strategy(surfaces, &mut SAHSplitStrategy),
         }
     }
@@ -51,13 +51,13 @@ where
     /// Construct a BVH by dividing each level evenly each time.
     #[allow(unused)]
     pub fn new_naive<R: Rng>(surfaces: &mut [S]) -> Self {
-        BVH {
+        Bvh {
             root: BVHNode::new_with_strategy(surfaces, &mut EqualSplitStrategy),
         }
     }
 }
 
-impl<S> Hittable for BVH<S>
+impl<S> Hittable for Bvh<S>
 where
     S: Hittable + Bounded,
 {
@@ -193,7 +193,7 @@ where
             let right = Arc::new(BVHNode::new_with_strategy(&mut surfaces[idx..], strategy));
             let box_left = left.bounding_box();
             let box_right = right.bounding_box();
-            let bound = box_left.merge(&box_right);
+            let bound = box_left.merge(box_right);
             return BVHNode::Inner(BVHInnerNode {
                 left: Some(left),
                 right: Some(right),
@@ -215,7 +215,7 @@ where
         }
     }
 
-    fn bounding_box(&self) -> &AABB {
+    fn bounding_box(&self) -> &Aabb {
         match *self {
             Self::Inner(ref inner) => inner.bounding_box(),
             Self::Leaf(ref leaf) => leaf.bounding_box(),
@@ -227,7 +227,7 @@ where
 struct BVHInnerNode<S> {
     left: Option<Arc<BVHNode<S>>>,
     right: Option<Arc<BVHNode<S>>>,
-    bound: AABB,
+    bound: Aabb,
 }
 
 impl<S> BVHInnerNode<S>
@@ -250,7 +250,7 @@ where
         }
     }
 
-    fn bounding_box(&self) -> &AABB {
+    fn bounding_box(&self) -> &Aabb {
         &self.bound
     }
 }
@@ -258,7 +258,7 @@ where
 #[derive(Clone)]
 struct BVHLeafNode<S> {
     surfaces: Arc<[S]>,
-    bound: AABB,
+    bound: Aabb,
 }
 
 impl<S> BVHLeafNode<S>
@@ -290,7 +290,7 @@ where
         closest_hit
     }
 
-    fn bounding_box(&self) -> &AABB {
+    fn bounding_box(&self) -> &Aabb {
         &self.bound
     }
 }

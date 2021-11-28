@@ -136,7 +136,7 @@ fn main() -> anyhow::Result<()> {
                             let ray = camera.get_ray(&mut rng, u, v);
                             scene
                                 .ray_color(ray, &mut rng, max_depth)
-                                .unwrap_or_else(Default::default)
+                                .unwrap_or_default()
                         });
                         progress_recorder.record();
                         let mut guard = img.lock().unwrap();

@@ -66,15 +66,16 @@ impl<'m> Hit<'m> {
     }
 }
 
+/// An axis-aligned bounding box.
 #[derive(Clone)]
-pub struct AABB {
+pub struct Aabb {
     min: Point3,
     max: Point3,
 }
 
-impl AABB {
+impl Aabb {
     pub fn new(min: Point3, max: Point3) -> Self {
-        AABB { min, max }
+        Aabb { min, max }
     }
 
     #[inline(always)]
@@ -97,10 +98,10 @@ impl AABB {
         true
     }
 
-    pub fn merge(&self, other: &AABB) -> AABB {
+    pub fn merge(&self, other: &Aabb) -> Aabb {
         let min = self.min.min_pointwise(&other.min);
         let max = self.max.max_pointwise(&other.max);
-        AABB { min, max }
+        Aabb { min, max }
     }
 
     pub fn surface_area(&self) -> f64 {
@@ -136,7 +137,7 @@ pub trait Bounded {
     /// Returns a bounding box for this object.
     ///
     /// Ideally this box is as small as possible, but that is not required.
-    fn bounding_box(&self) -> AABB;
+    fn bounding_box(&self) -> Aabb;
 }
 
 #[cfg(test)]
@@ -145,7 +146,7 @@ mod tests {
 
     #[test]
     fn centroid() {
-        let aabb = AABB::new(Point3::new(-1., -1., -1.), Point3::new(1., 1., 1.));
+        let aabb = Aabb::new(Point3::new(-1., -1., -1.), Point3::new(1., 1., 1.));
         let centroid = aabb.centroid();
         assert_eq!(centroid.get(0), 0.0);
         assert_eq!(centroid.get(1), 0.0);
@@ -154,10 +155,10 @@ mod tests {
 
     #[test]
     fn bounding_box_surface_area() {
-        let aabb = AABB::new(Point3::new(0., 0., 0.), Point3::new(1., 2., 3.));
+        let aabb = Aabb::new(Point3::new(0., 0., 0.), Point3::new(1., 2., 3.));
         assert_eq!(aabb.surface_area(), 22.0);
 
-        let aabb = AABB::new(Point3::new(-1., -2., -3.), Point3::new(4., 5., 6.));
+        let aabb = Aabb::new(Point3::new(-1., -2., -3.), Point3::new(4., 5., 6.));
         assert_eq!(aabb.surface_area(), 286.0);
     }
 }

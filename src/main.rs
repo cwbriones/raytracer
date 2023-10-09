@@ -110,8 +110,8 @@ fn main() -> anyhow::Result<()> {
     let start = Instant::now();
 
     let (scene, camera) = if let Some(ref path) = config.scene {
-        scene::load_scene(&path, aspect_ratio)
-            .with_context(|| format!("load scene file '{}'", path))?
+        scene::load_scene(path, aspect_ratio)
+            .with_context(|| format!("load scene file '{path}'"))?
     } else {
         scene::example::one_weekend(aspect_ratio)
     };
@@ -164,7 +164,7 @@ fn main() -> anyhow::Result<()> {
 
     let elapsed_sec = start.elapsed().as_secs_f64();
     let rays_per_sec = (rays as f64) / elapsed_sec;
-    eprintln!("\nDone in {:.2}s ({:.0} rays/s)", elapsed_sec, rays_per_sec);
+    eprintln!("\nDone in {elapsed_sec:.2}s ({rays_per_sec:.0} rays/s)");
     img.save(config.output)?;
     Ok(())
 }

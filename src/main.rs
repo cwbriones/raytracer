@@ -13,58 +13,47 @@ use std::fs::File;
 use std::time::Instant;
 
 use anyhow::Context;
-use once_cell::sync::Lazy;
+use clap::Parser;
 use rand::rngs::SmallRng;
 use rand::{
     Rng,
     SeedableRng,
 };
 use rayon::prelude::*;
-use structopt::StructOpt;
 
-static NUM_CPUS: Lazy<String> = Lazy::new(|| rayon::current_num_threads().to_string());
-
-static THREADS_HELP: Lazy<String> = Lazy::new(|| {
-    format!(
-        "Number of threads to use [default: {}]\n\n\
-             Defaults to the number of logical cpus.",
-        &*NUM_CPUS
-    )
-});
-
-#[derive(StructOpt)]
+#[derive(Parser)]
 /// A simple ray tracer implementation in rust.
 struct TracerOpt {
     /// Number of samples to take per pixel.
-    #[structopt(long, short, default_value = "4")]
+    #[arg(long, short, default_value = "4")]
     num_samples: usize,
     /// Destination of the output image.
     ///
     /// supported formats: png, jpg
-    #[structopt(long, short, default_value = "output.png")]
+    #[arg(long, short, default_value = "output.png")]
     output: String,
-    #[structopt(long, short = "t", help(&THREADS_HELP), default_value(&NUM_CPUS))]
+    #[arg(long, short, default_value_t = rayon::current_num_threads())]
     /// Number of render threads to use.
     threads: usize,
     /// Output image width.
-    #[structopt(long, default_value = "400")]
+    #[arg(long, default_value = "400")]
     width: usize,
     /// Output image height.
-    #[structopt(long)]
+    #[arg(long)]
     height: Option<usize>,
     /// Output image aspect ratio [default: 1.5].
-    #[structopt(long, conflicts_with = "height")]
+    #[arg(long, conflicts_with = "height")]
     aspect_ratio: Option<f64>,
     /// Seed to use for RNG.
     ///
     /// By default the RNG will be seeded through the OS-provided entropy source.
-    #[structopt(long)]
+    #[arg(long)]
     seed: Option<u64>,
     /// A scene file to load from configuration.
-    #[structopt(long)]
+    #[arg(long)]
     scene: Option<String>,
     /// Disables diplaying the estimate of time remaining.
-    #[structopt(long)]
+    #[arg(long)]
     no_progress: bool,
 }
 
@@ -93,7 +82,7 @@ impl TracerOpt {
 }
 
 fn main() -> anyhow::Result<()> {
-    let config = TracerOpt::from_args();
+    let config = TracerOpt::parse();
 
     let aspect_ratio = config.aspect_ratio();
     let image_width = config.width;

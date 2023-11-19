@@ -10,11 +10,8 @@ mod trace;
 mod util;
 
 use std::fs::File;
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Instant;
 
-use anyhow::anyhow;
 use anyhow::Context;
 use once_cell::sync::Lazy;
 use rand::rngs::SmallRng;
@@ -22,9 +19,10 @@ use rand::{
     Rng,
     SeedableRng,
 };
+use rayon::prelude::*;
 use structopt::StructOpt;
 
-static NUM_CPUS: Lazy<String> = Lazy::new(|| num_cpus::get().to_string());
+static NUM_CPUS: Lazy<String> = Lazy::new(|| rayon::current_num_threads().to_string());
 
 static THREADS_HELP: Lazy<String> = Lazy::new(|| {
     format!(
@@ -46,9 +44,7 @@ struct TracerOpt {
     #[structopt(long, short, default_value = "output.png")]
     output: String,
     #[structopt(long, short = "t", help(&THREADS_HELP), default_value(&NUM_CPUS))]
-    /// Number of threads to use.
-    ///
-    /// Defaults to the logical number of cpus.
+    /// Number of render threads to use.
     threads: usize,
     /// Output image width.
     #[structopt(long, default_value = "400")]
@@ -67,6 +63,9 @@ struct TracerOpt {
     /// A scene file to load from configuration.
     #[structopt(long)]
     scene: Option<String>,
+    /// Disables diplaying the estimate of time remaining.
+    #[structopt(long)]
+    no_progress: bool,
 }
 
 impl TracerOpt {
@@ -98,13 +97,20 @@ fn main() -> anyhow::Result<()> {
 
     let aspect_ratio = config.aspect_ratio();
     let image_width = config.width;
-    let threads = config.threads;
+    let _threads = config.threads;
     let image_height = config.height();
     let samples_per_pixel: usize = config.num_samples;
     let rays = image_width * image_height * samples_per_pixel;
     let max_depth = 50;
 
     let start = Instant::now();
+
+    if config.threads != rayon::current_num_threads() {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(config.threads)
+            .build_global()
+            .expect("init global threadpool");
+    }
 
     let (scene, camera) = if let Some(ref path) = config.scene {
         scene::load_scene(path, aspect_ratio)
@@ -113,51 +119,37 @@ fn main() -> anyhow::Result<()> {
         scene::example::one_weekend(aspect_ratio)
     };
 
-    let progress = progress::ProgressBar::new(image_width * image_height);
-    let img = crossbeam::scope(|s| {
-        let buf = vec![0; 3 * image_height * image_width];
-        let img = Arc::new(Mutex::new(buf));
-        for worker_id in 0..threads {
-            let scene = scene.clone();
-            let camera = camera.clone();
-            let progress_recorder = progress.create_recorder();
-            let img = img.clone();
+    let mut buf = vec![0; 3 * image_width * image_height];
+    let (progress, recorder) = progress::ProgressBar::new(image_width * image_height);
+    let scene = scene.clone();
+    let camera = camera.clone();
+
+    if !config.no_progress {
+        rayon::spawn(move || progress.run(samples_per_pixel));
+    }
+
+    buf.par_chunks_mut(3 * image_width)
+        .enumerate()
+        .for_each(|(j, row)| {
+            let j = image_height - j - 1;
             let mut rng = small_rng(config.seed);
-            s.spawn(move |_| {
-                (worker_id..image_height)
-                    .step_by(threads)
-                    .flat_map(|j| (0..image_width).map(move |i| (i, j)))
-                    .for_each(|(i, j)| {
-                        let color_vec = average(samples_per_pixel, || {
-                            let u = (i as f64 + rng.gen::<f64>()) / (image_width - 1) as f64;
-                            let v = (j as f64 + rng.gen::<f64>()) / (image_height - 1) as f64;
-                            let ray = camera.get_ray(&mut rng, u, v);
-                            scene
-                                .ray_color(ray, &mut rng, max_depth)
-                                .unwrap_or_default()
-                        });
-                        progress_recorder.record();
-                        let mut buf = img.lock().unwrap();
+            for i in 0..image_width {
+                let color_vec = average(samples_per_pixel, || {
+                    let u = (i as f64 + rng.gen::<f64>()) / (image_width - 1) as f64;
+                    let v = (j as f64 + rng.gen::<f64>()) / (image_height - 1) as f64;
+                    let ray = camera.get_ray(&mut rng, u, v);
+                    scene
+                        .ray_color(ray, &mut rng, max_depth)
+                        .unwrap_or_default()
+                });
+                let r = 256. * (color_vec.x()).sqrt().clamp(0.0, 0.99);
+                let g = 256. * (color_vec.y()).sqrt().clamp(0.0, 0.99);
+                let b = 256. * (color_vec.z()).sqrt().clamp(0.0, 0.99);
 
-                        let r = 256. * (color_vec.x()).sqrt().clamp(0.0, 0.99);
-                        let g = 256. * (color_vec.y()).sqrt().clamp(0.0, 0.99);
-                        let b = 256. * (color_vec.z()).sqrt().clamp(0.0, 0.99);
-
-                        let idx = 3 * (i + (image_height - j - 1) * image_width);
-                        buf[idx..idx + 3].copy_from_slice(&[r as u8, g as u8, b as u8]);
-                    });
-            });
-        }
-        s.spawn(|_| progress.run(samples_per_pixel));
-        img
-    })
-    .map_err(|e| anyhow!("Threads panicked during execution: {:?}", e))
-    .unwrap();
-
-    let img = Arc::try_unwrap(img)
-        .expect("all other threads have been dropped")
-        .into_inner()
-        .expect("all other threads have been dropped");
+                row[3 * i..3 * i + 3].copy_from_slice(&[r as u8, g as u8, b as u8]);
+                recorder.record();
+            }
+        });
 
     let elapsed_sec = start.elapsed().as_secs_f64();
     let rays_per_sec = (rays as f64) / elapsed_sec;
@@ -169,7 +161,7 @@ fn main() -> anyhow::Result<()> {
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header()?;
     writer
-        .write_image_data(&img[..])
+        .write_image_data(&buf[..])
         .with_context(|| "could not write image")?;
     writer.finish()?;
     Ok(())

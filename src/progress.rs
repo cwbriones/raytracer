@@ -22,6 +22,7 @@ pub struct ProgressBar {
 }
 
 /// A handle to a progress bar that allows for recording forward progress.
+#[derive(Clone)]
 pub struct ProgressRecorder {
     remaining: Arc<AtomicUsize>,
 }
@@ -34,17 +35,21 @@ impl ProgressRecorder {
 }
 
 impl ProgressBar {
-    /// Create a new progress bar with `total` units of work to process.
-    pub fn new(total: usize) -> Self {
+    /// Create a new progress bar and recorder with `total` units of work to process.
+    ///
+    /// The bar can be used to display progress by being run in a dedicated thread.
+    ///
+    /// The recorder can be cloned to observe progress being made from worker threads.
+    pub fn new(total: usize) -> (Self, ProgressRecorder) {
         let remaining = Arc::new(AtomicUsize::new(total));
-        ProgressBar { total, remaining }
-    }
-
-    /// Create a new recorder for this progress bar that can be used to log work being processed.
-    pub fn create_recorder(&self) -> ProgressRecorder {
-        ProgressRecorder {
-            remaining: self.remaining.clone(),
-        }
+        let bar = ProgressBar {
+            total,
+            remaining: remaining.clone(),
+        };
+        let recorder = ProgressRecorder {
+            remaining: remaining.clone(),
+        };
+        (bar, recorder)
     }
 
     /// Run the progress bar.
@@ -55,6 +60,7 @@ impl ProgressBar {
         let start = Instant::now();
         let mut last_check = self.total + 1;
         let mut rates = VecDeque::with_capacity(AVERAGE_OVER_PERIODS);
+        let mut sum = 0f32;
         eprint!("\n\n\n\n");
         loop {
             let remaining = self.remaining.load(Ordering::Relaxed);
@@ -63,10 +69,12 @@ impl ProgressBar {
             }
             let current_rate = (last_check - remaining) as f32;
             if rates.len() == AVERAGE_OVER_PERIODS {
-                rates.pop_front();
+                let last = rates.pop_front().unwrap();
+                sum -= last;
             }
             rates.push_back(current_rate);
-            let average_rate = rates.iter().sum::<f32>() / (rates.len() as f32);
+            sum += current_rate;
+            let average_rate = sum / (rates.len() as f32);
 
             let estimated_time = REPORT_PERIOD.mul_f32(remaining as f32 / average_rate);
 

@@ -10,7 +10,7 @@ edition = "2018"
 rand = {version = "0.8", features = ["small_rng"]}
 anyhow = "1.0"
 crossbeam = "0.8"
-image = "0.23"
+png = "0.17"
 structopt = "0.3"
 thiserror = "1.0"
 tobj = "2.0"

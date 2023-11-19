@@ -9,16 +9,13 @@ mod surfaces;
 mod trace;
 mod util;
 
+use std::fs::File;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Context;
-use image::{
-    self,
-    ImageBuffer,
-};
 use once_cell::sync::Lazy;
 use rand::rngs::SmallRng;
 use rand::{
@@ -55,10 +52,10 @@ struct TracerOpt {
     threads: usize,
     /// Output image width.
     #[structopt(long, default_value = "400")]
-    width: u32,
+    width: usize,
     /// Output image height.
     #[structopt(long)]
-    height: Option<u32>,
+    height: Option<usize>,
     /// Output image aspect ratio [default: 1.5].
     #[structopt(long, conflicts_with = "height")]
     aspect_ratio: Option<f64>,
@@ -75,13 +72,13 @@ struct TracerOpt {
 impl TracerOpt {
     const DEFAULT_ASPECT_RATIO: f64 = 1.5;
 
-    fn height(&self) -> u32 {
+    fn height(&self) -> usize {
         if let Some(height) = self.height {
             height
         } else if let Some(aspect_ratio) = self.aspect_ratio {
-            (self.width as f64 / aspect_ratio) as u32
+            (self.width as f64 / aspect_ratio) as usize
         } else {
-            (self.width as f64 / TracerOpt::DEFAULT_ASPECT_RATIO) as u32
+            (self.width as f64 / TracerOpt::DEFAULT_ASPECT_RATIO) as usize
         }
     }
 
@@ -104,7 +101,7 @@ fn main() -> anyhow::Result<()> {
     let threads = config.threads;
     let image_height = config.height();
     let samples_per_pixel: usize = config.num_samples;
-    let rays = (image_width * image_height) as usize * samples_per_pixel;
+    let rays = image_width * image_height * samples_per_pixel;
     let max_depth = 50;
 
     let start = Instant::now();
@@ -116,9 +113,10 @@ fn main() -> anyhow::Result<()> {
         scene::example::one_weekend(aspect_ratio)
     };
 
-    let progress = progress::ProgressBar::new((image_width * image_height) as usize);
+    let progress = progress::ProgressBar::new(image_width * image_height);
     let img = crossbeam::scope(|s| {
-        let img = Arc::new(Mutex::new(ImageBuffer::new(image_width, image_height)));
+        let buf = vec![0; 3 * image_height * image_width];
+        let img = Arc::new(Mutex::new(buf));
         for worker_id in 0..threads {
             let scene = scene.clone();
             let camera = camera.clone();
@@ -126,7 +124,7 @@ fn main() -> anyhow::Result<()> {
             let img = img.clone();
             let mut rng = small_rng(config.seed);
             s.spawn(move |_| {
-                (worker_id..(image_height as usize))
+                (worker_id..image_height)
                     .step_by(threads)
                     .flat_map(|j| (0..image_width).map(move |i| (i, j)))
                     .for_each(|(i, j)| {
@@ -139,15 +137,14 @@ fn main() -> anyhow::Result<()> {
                                 .unwrap_or_default()
                         });
                         progress_recorder.record();
-                        let mut guard = img.lock().unwrap();
+                        let mut buf = img.lock().unwrap();
+
                         let r = 256. * (color_vec.x()).sqrt().clamp(0.0, 0.99);
                         let g = 256. * (color_vec.y()).sqrt().clamp(0.0, 0.99);
                         let b = 256. * (color_vec.z()).sqrt().clamp(0.0, 0.99);
-                        guard.put_pixel(
-                            i,
-                            image_height - j as u32 - 1,
-                            image::Rgb([r as u8, g as u8, b as u8]),
-                        );
+
+                        let idx = 3 * (i + (image_height - j - 1) * image_width);
+                        buf[idx..idx + 3].copy_from_slice(&[r as u8, g as u8, b as u8]);
                     });
             });
         }
@@ -165,7 +162,16 @@ fn main() -> anyhow::Result<()> {
     let elapsed_sec = start.elapsed().as_secs_f64();
     let rays_per_sec = (rays as f64) / elapsed_sec;
     eprintln!("\nDone in {elapsed_sec:.2}s ({rays_per_sec:.0} rays/s)");
-    img.save(config.output)?;
+
+    let f = File::create(config.output)?;
+    let mut encoder = png::Encoder::new(f, image_width as u32, image_height as u32);
+    encoder.set_color(png::ColorType::Rgb);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header()?;
+    writer
+        .write_image_data(&img[..])
+        .with_context(|| "could not write image")?;
+    writer.finish()?;
     Ok(())
 }
 

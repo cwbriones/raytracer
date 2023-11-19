@@ -82,22 +82,29 @@ fn load_mesh<P: AsRef<Path>>(
     transform: &[Transform],
 ) -> anyhow::Result<Arc<surfaces::Mesh>> {
     let mut reader = reader_at(path)?;
-    let (models, materials) = tobj::load_obj_buf(&mut reader, true, |_| {
+    let (models, materials) = tobj::load_obj_buf(
+        &mut reader,
+        &tobj::LoadOptions {
+            ..Default::default()
+        },
         // Since we don't support materials right now, just fail immediately.
-        Err(tobj::LoadError::GenericFailure)
-    })
+        |_| Err(tobj::LoadError::GenericFailure),
+    )
     .context("could not load mesh from file")?;
 
-    if models.len() != 1 {
-        return Err(anyhow!("expected exactly one model, got: {}", models.len()));
+    if let Ok(m) = materials {
+        if !m.is_empty() {
+            eprintln!(
+                "warning: {} materials found in OBJ file. Materials are not supported.",
+                m.len()
+            );
+        }
     }
-    if !materials.is_empty() {
-        eprintln!(
-            "warning: {} materials found in OBJ file. Materials are not supported.",
-            materials.len()
-        );
-    }
-    let model = models.into_iter().next().unwrap(); // we already checked len above.
+    let nmodels = models.len();
+    let model = models
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("expected exactly one model, got: {}", nmodels))?; // we already checked len above.
 
     eprintln!("loaded mesh: {}", model.name);
     let ::tobj::Mesh {

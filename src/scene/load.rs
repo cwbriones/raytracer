@@ -48,6 +48,7 @@ pub fn load_scene<P: AsRef<Path>>(path: P, aspect_ratio: f64) -> anyhow::Result<
     }
 
     let mut builder = Scene::builder();
+    builder.set_background(config.scene.background);
     for surface in &config.scene.surfaces {
         match surface {
             Surface::Mesh {
@@ -245,6 +246,7 @@ impl CameraConfig {
 #[derive(Deserialize, Debug)]
 struct SceneConfig {
     surfaces: Vec<Surface>,
+    background: Vec3,
 }
 
 #[derive(Deserialize, Debug)]
@@ -303,6 +305,7 @@ enum Material {
     Lambertian { albedo: Albedo },
     Dielectric { index: f64 },
     Metal { albedo: Albedo, fuzz: f64 },
+    DiffuseLight { albedo: Albedo },
 }
 
 impl From<&Material> for crate::material::Material {
@@ -312,6 +315,9 @@ impl From<&Material> for crate::material::Material {
             Material::Dielectric { index } => crate::material::Material::dielectric(index),
             Material::Metal { ref albedo, fuzz } => {
                 crate::material::Material::metal(albedo.0, fuzz)
+            }
+            Material::DiffuseLight { ref albedo } => {
+                crate::material::Material::diffuse_light(albedo.0)
             }
         }
     }

@@ -119,26 +119,27 @@ fn main() -> anyhow::Result<()> {
 
     buf.par_chunks_mut(3 * image_width)
         .enumerate()
-        .for_each(|(j, row)| {
-            let j = image_height - j - 1;
-            let mut rng = small_rng(config.seed);
-            for i in 0..image_width {
-                let color_vec = average(samples_per_pixel, || {
-                    let u = (i as f64 + rng.gen::<f64>()) / (image_width - 1) as f64;
-                    let v = (j as f64 + rng.gen::<f64>()) / (image_height - 1) as f64;
-                    let ray = camera.get_ray(&mut rng, u, v);
-                    scene
-                        .ray_color(ray, &mut rng, max_depth)
-                        .unwrap_or_default()
-                });
-                let r = 256. * (color_vec.x()).sqrt().clamp(0.0, 0.99);
-                let g = 256. * (color_vec.y()).sqrt().clamp(0.0, 0.99);
-                let b = 256. * (color_vec.z()).sqrt().clamp(0.0, 0.99);
+        .for_each_init(
+            || Vec::with_capacity(max_depth),
+            |tmp, (j, row)| {
+                let j = image_height - j - 1;
+                let mut rng = small_rng(config.seed);
+                for i in 0..image_width {
+                    let color_vec = average(samples_per_pixel, || {
+                        let u = (i as f64 + rng.gen::<f64>()) / (image_width - 1) as f64;
+                        let v = (j as f64 + rng.gen::<f64>()) / (image_height - 1) as f64;
+                        let ray = camera.get_ray(&mut rng, u, v);
+                        scene.ray_color(ray, &mut rng, max_depth, tmp)
+                    });
+                    let r = 256. * (color_vec.x()).sqrt().clamp(0.0, 0.99);
+                    let g = 256. * (color_vec.y()).sqrt().clamp(0.0, 0.99);
+                    let b = 256. * (color_vec.z()).sqrt().clamp(0.0, 0.99);
 
-                row[3 * i..3 * i + 3].copy_from_slice(&[r as u8, g as u8, b as u8]);
-                recorder.record();
-            }
-        });
+                    row[3 * i..3 * i + 3].copy_from_slice(&[r as u8, g as u8, b as u8]);
+                    recorder.record();
+                }
+            },
+        );
 
     let elapsed_sec = start.elapsed().as_secs_f64();
     let rays_per_sec = (rays as f64) / elapsed_sec;

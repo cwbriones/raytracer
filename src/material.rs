@@ -35,9 +35,23 @@ impl Material {
         }
     }
 
+    pub fn diffuse_light(albedo: Vec3) -> Self {
+        Material {
+            albedo,
+            kind: MaterialKind::DiffuseLight,
+        }
+    }
+
     #[inline(always)]
     pub fn scatter<R: Rng>(&self, ray: &Ray, hit: &Hit, rng: &mut R) -> Option<(Vec3, Ray)> {
         self.kind.scatter(ray, hit, rng).map(|r| (self.albedo, r))
+    }
+
+    pub fn emit(&self, _: &Hit) -> Vec3 {
+        match self.kind {
+            MaterialKind::DiffuseLight => self.albedo,
+            _ => Vec3::default(),
+        }
     }
 }
 
@@ -46,6 +60,7 @@ enum MaterialKind {
     Lambertian,
     Metal(f64),
     Dielectric(f64),
+    DiffuseLight,
 }
 
 impl MaterialKind {
@@ -57,6 +72,7 @@ impl MaterialKind {
             Self::Dielectric(refractive_index) => {
                 Some(dielectric_scatter(refractive_index, ray, hit, rng))
             }
+            Self::DiffuseLight => None,
         }
     }
 }

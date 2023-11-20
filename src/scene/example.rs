@@ -22,6 +22,7 @@ pub fn one_weekend(aspect_ratio: f64) -> (Scene, Camera) {
 
     let mut rng = rand::thread_rng();
     let mut objects = Scene::builder();
+    objects.set_background(Vec3::new(0.7, 0.8, 1.0));
 
     let ground_material = Material::lambertian(Vec3::new(0.5, 0.5, 0.5));
     objects.add(Sphere::new(

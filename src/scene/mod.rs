@@ -4,10 +4,7 @@ use crate::bvh::Bvh;
 use crate::geom::Vec3;
 use crate::surfaces::Surface;
 use crate::trace::Hittable;
-use crate::trace::{
-    Hit,
-    Ray,
-};
+use crate::trace::Ray;
 
 pub mod example;
 mod load;
@@ -17,18 +14,21 @@ pub use load::load_scene;
 #[derive(Clone)]
 pub struct Scene {
     root: Bvh<Surface>,
+    background: Vec3,
 }
 
 impl Scene {
     pub fn builder() -> SceneBuilder {
         SceneBuilder {
             surfaces: Vec::new(),
+            background: Vec3::default(),
         }
     }
 }
 
 pub struct SceneBuilder {
     surfaces: Vec<Surface>,
+    background: Vec3,
 }
 
 impl SceneBuilder {
@@ -39,43 +39,71 @@ impl SceneBuilder {
         self.surfaces.push(surface.into());
     }
 
+    pub fn set_background(&mut self, background: Vec3) {
+        self.background = background;
+    }
+
     pub fn build(mut self) -> Scene {
         let root = Bvh::new(&mut self.surfaces);
-        Scene { root }
+        Scene {
+            root,
+            background: self.background,
+        }
     }
 }
 
 impl Scene {
-    fn scatter(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
-        self.root.hit(ray, t_min, t_max)
-    }
-
-    pub fn ray_color<R: Rng>(&self, mut ray: Ray, rng: &mut R, max_depth: usize) -> Option<Vec3> {
+    pub fn ray_color<R: Rng>(
+        &self,
+        mut ray: Ray,
+        rng: &mut R,
+        max_depth: usize,
+        stack: &mut Vec<(Vec3, Vec3)>,
+    ) -> Vec3 {
         // In the book this is done recursively, but I've refactored it into an
         // explicit accumulating loop to make profiling easier.
         //
         // This prevents additional tracing iterations from adding stack frames.
-        let mut attenuation = Vec3::new(1.0, 1.0, 1.0);
-        for _ in 0..max_depth {
-            if let Some(hit) = self.scatter(&ray, 0.001, ::std::f64::INFINITY) {
-                if let Some((cur_attenuation, ray_out)) = hit.material.scatter(&ray, &hit, rng) {
+        //
+        // Because of the emissivity calculation, we need to keep a stack of light
+        // emitted/attenuated at each iteration to then resolve once the ray has
+        // stopped scattering.
+        //
+        // FIXME: Because the color calculation is inherently recursive, we need to
+        // maintain a stack of light emitted/attenuated. This isn't inherently a problem
+        // but is awkward because the caller has to provide a buffer so that we don't
+        // allocate on every single call.
+        stack.clear();
+        let mut depth = 0;
+        loop {
+            if let Some(hit) = self.root.hit(&ray, 0.001, ::std::f64::INFINITY) {
+                let emitted = hit.material.emit(&hit);
+                if let Some((cur_attenuation, scattered)) = hit.material.scatter(&ray, &hit, rng) {
                     // The ray was scattered in a different direction. Continue following it.
-                    attenuation = attenuation.mul_pointwise(&cur_attenuation);
-                    ray = ray_out;
-                } else {
-                    // The ray was completely absorbed.
-                    return None;
+                    stack.push((emitted, cur_attenuation));
+                    ray = scattered;
                 }
-            } else {
-                // The ray escaped after bouncing.
-                // Multiply the color with the sky.
-                let unit_dir = ray.dir().unit();
-                let t = 0.5 * (unit_dir.y() + 1.0);
-                let color = &Vec3::new(1.0, 1.0, 1.0).lerp(Vec3::new(0.5, 0.7, 1.0), t);
-                return Some(attenuation.mul_pointwise(color));
+                depth += 1;
+                if depth < max_depth {
+                    continue;
+                }
+                // The ray was completely absorbed, or we have run out of iterations.
+                //
+                // Either way we stop scattering.
+                stack.push((emitted, Vec3::default()));
+                return resolve_color(stack);
             }
+            // The ray escaped after bouncing.
+            stack.push((Vec3::default(), self.background));
+            return resolve_color(stack);
         }
-        // The ray hasn't resolved for the maximum allowed iterations,
-        None
     }
+}
+
+fn resolve_color(stack: &[(Vec3, Vec3)]) -> Vec3 {
+    let mut acc = Vec3::new(1.0, 1.0, 1.0);
+    for (emitted, attenuation) in stack.iter().rev() {
+        acc = *emitted + attenuation.mul_pointwise(&acc);
+    }
+    acc
 }

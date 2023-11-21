@@ -333,12 +333,15 @@ impl Hittable for Surface {
 
 impl Hittable for Vec<Surface> {
     fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
-        for s in self {
-            if let Some(h) = s.hit(ray, t_min, t_max) {
-                return Some(h);
+        let mut closest = t_max;
+        let mut closest_hit = None;
+        for o in self {
+            if let Some(hit) = o.hit(ray, t_min, closest) {
+                closest = hit.t;
+                closest_hit = Some(hit);
             }
         }
-        None
+        closest_hit
     }
 }
 

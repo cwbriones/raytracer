@@ -75,7 +75,7 @@ pub fn load_scene<P: AsRef<Path>>(
                 material,
             } => {
                 // FIXME: need to support generic translations
-                let sphere = crate::surfaces::Sphere::new(*position, *radius, material.into());
+                let sphere = surfaces::Sphere::new(*position, *radius, material.into());
                 builder.add(sphere);
             }
             Surface::Quad {
@@ -84,8 +84,61 @@ pub fn load_scene<P: AsRef<Path>>(
                 material,
             } => {
                 let (u, v) = sides;
-                let quad = crate::surfaces::Quad::new(*position, *u, *v, material.into());
+                let quad = surfaces::Quad::new(*position, *u, *v, material.into());
                 builder.add(quad);
+            }
+            Surface::Box { corners, material } => {
+                let (a, b) = corners;
+                let min = a.min_pointwise(b);
+                let max = a.max_pointwise(b);
+
+                let dx = Vec3::new(max.x() - min.x(), 0.0, 0.0);
+                let dy = Vec3::new(0.0, max.y() - min.y(), 0.0);
+                let dz = Vec3::new(0.0, 0.0, max.z() - min.z());
+
+                let material: crate::material::Material = material.into();
+                // front
+                builder.add(crate::surfaces::Quad::new(
+                    Point3::new(min.x(), min.y(), max.z()),
+                    dx,
+                    dy,
+                    material.clone(),
+                ));
+                // right
+                builder.add(crate::surfaces::Quad::new(
+                    Point3::new(max.x(), min.y(), max.z()),
+                    dz.negate(),
+                    dy,
+                    material.clone(),
+                ));
+                // back
+                builder.add(crate::surfaces::Quad::new(
+                    Point3::new(max.x(), min.y(), min.z()),
+                    dx.negate(),
+                    dy,
+                    material.clone(),
+                ));
+                // left
+                builder.add(crate::surfaces::Quad::new(
+                    Point3::new(min.x(), min.y(), min.z()),
+                    dz,
+                    dy,
+                    material.clone(),
+                ));
+                // top
+                builder.add(crate::surfaces::Quad::new(
+                    Point3::new(min.x(), max.y(), max.z()),
+                    dx,
+                    dz.negate(),
+                    material.clone(),
+                ));
+                // bottom
+                builder.add(crate::surfaces::Quad::new(
+                    Point3::new(min.x(), min.y(), min.z()),
+                    dx,
+                    dz,
+                    material,
+                ));
             }
         }
     }
@@ -274,6 +327,10 @@ enum Surface {
     Quad {
         position: Point3,
         sides: (Vec3, Vec3),
+        material: Material,
+    },
+    Box {
+        corners: (Point3, Point3),
         material: Material,
     },
     Mesh {

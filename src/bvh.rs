@@ -284,10 +284,8 @@ where
         let mut closest_hit = None;
         for o in &self.surfaces[..] {
             if let Some(hit) = o.hit(ray, t_min, closest) {
-                if hit.t < closest {
-                    closest = hit.t;
-                    closest_hit = Some(hit);
-                }
+                closest = hit.t;
+                closest_hit = Some(hit);
             }
         }
         closest_hit

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use rand::Rng;
 
 use crate::bvh::Bvh;
@@ -13,25 +15,31 @@ pub use load::load_scene;
 
 #[derive(Clone)]
 pub struct Scene {
-    root: Bvh<Surface>,
+    root: Arc<dyn Hittable + Send + Sync>,
     background: Vec3,
 }
 
 impl Scene {
     pub fn builder() -> SceneBuilder {
-        SceneBuilder {
-            surfaces: Vec::new(),
-            background: Vec3::default(),
-        }
+        SceneBuilder::new()
     }
 }
 
 pub struct SceneBuilder {
     surfaces: Vec<Surface>,
     background: Vec3,
+    use_bvh: bool,
 }
 
 impl SceneBuilder {
+    fn new() -> Self {
+        SceneBuilder {
+            surfaces: Vec::new(),
+            background: Vec3::default(),
+            use_bvh: true,
+        }
+    }
+
     pub fn add<S>(&mut self, surface: S)
     where
         S: Into<Surface>,
@@ -43,8 +51,16 @@ impl SceneBuilder {
         self.background = background;
     }
 
+    pub fn set_use_bvh(&mut self, use_bvh: bool) {
+        self.use_bvh = use_bvh;
+    }
+
     pub fn build(mut self) -> Scene {
-        let root = Bvh::new(&mut self.surfaces);
+        let root: Arc<dyn Hittable + Send + Sync> = if self.use_bvh {
+            Arc::new(Bvh::new(&mut self.surfaces))
+        } else {
+            Arc::new(self.surfaces)
+        };
         Scene {
             root,
             background: self.background,

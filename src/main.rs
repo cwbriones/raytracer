@@ -55,6 +55,12 @@ struct TracerOpt {
     /// Disables diplaying the estimate of time remaining.
     #[arg(long)]
     no_progress: bool,
+    /// Disables the use of the bvh acceleration structure.
+    ///
+    /// This significantly degrades performance for large scenes, but can be useful for debugging
+    /// since it guarantees every surface intersection will be tested.
+    #[arg(long)]
+    no_bvh: bool,
 }
 
 impl TracerOpt {
@@ -102,7 +108,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let (scene, camera) = if let Some(ref path) = config.scene {
-        scene::load_scene(path, aspect_ratio)
+        scene::load_scene(path, aspect_ratio, !config.no_bvh)
             .with_context(|| format!("load scene file '{path}'"))?
     } else {
         scene::example::one_weekend(aspect_ratio)

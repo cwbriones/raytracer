@@ -1,0 +1,24 @@
+camera:
+    fov: 20.0
+    from: [-2, 2, 1]
+    towards: [0, 0, -1]
+    # focus_distance: 12.91
+    # aperture: 0.1
+
+scene:
+    background: [0, 0, 0]
+    surfaces:
+        # ground
+        - type: sphere
+          radius: 100
+          position: [0.0, -100.5, -1.0]
+          material:
+              type: lambertian
+              albedo: [0.8, 0.8, 0.8]
+        # light
+        - type: sphere
+          radius: .25
+          position: [0, 0, -1]
+          material:
+              type: diffuseLight
+              albedo: [4, 4, 4]

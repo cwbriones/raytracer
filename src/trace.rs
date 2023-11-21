@@ -78,6 +78,23 @@ impl Aabb {
         Aabb { min, max }
     }
 
+    // Returns a new Aabb with each of its sides being at least
+    // length delta.
+    pub fn pad(&self, delta: f64) -> Self {
+        let x = (self.max.x() - self.min.x()).abs();
+        let y = (self.max.y() - self.min.y()).abs();
+        let z = (self.max.z() - self.min.z()).abs();
+
+        let dx = if x >= delta { 0.0 } else { delta / 2.0 };
+        let dy = if y >= delta { 0.0 } else { delta / 2.0 };
+        let dz = if z >= delta { 0.0 } else { delta / 2.0 };
+
+        let min = self.min - Vec3::new(dx, dy, dz);
+        let max = self.max + Vec3::new(dx, dy, dz);
+
+        Aabb { min, max }
+    }
+
     #[inline(always)]
     pub fn hit(&self, ray: &Ray, mut t_min: f64, mut t_max: f64) -> bool {
         // Maybe do this with SIMD intrinsics?

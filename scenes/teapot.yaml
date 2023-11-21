@@ -6,6 +6,7 @@ camera:
     # aperture: 0.1
 
 scene:
+    background: [0.7, 0.8, 1.0]
     surfaces:
         # ground
         - type: sphere

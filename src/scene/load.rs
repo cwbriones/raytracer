@@ -36,7 +36,11 @@ use crate::surfaces;
 /// Load a scene from the given path.
 ///
 /// The camera will be configured with the given aspect ratio.
-pub fn load_scene<P: AsRef<Path>>(path: P, aspect_ratio: f64) -> anyhow::Result<(Scene, Camera)> {
+pub fn load_scene<P: AsRef<Path>>(
+    path: P,
+    aspect_ratio: f64,
+    use_bvh: bool,
+) -> anyhow::Result<(Scene, Camera)> {
     let path = path.as_ref();
     let file = File::open(path)?;
     let reader = BufReader::new(file);
@@ -49,6 +53,7 @@ pub fn load_scene<P: AsRef<Path>>(path: P, aspect_ratio: f64) -> anyhow::Result<
 
     let mut builder = Scene::builder();
     builder.set_background(config.scene.background);
+    builder.set_use_bvh(use_bvh);
     for surface in &config.scene.surfaces {
         match surface {
             Surface::Mesh {
@@ -72,6 +77,15 @@ pub fn load_scene<P: AsRef<Path>>(path: P, aspect_ratio: f64) -> anyhow::Result<
                 // FIXME: need to support generic translations
                 let sphere = crate::surfaces::Sphere::new(*position, *radius, material.into());
                 builder.add(sphere);
+            }
+            Surface::Quad {
+                position,
+                sides,
+                material,
+            } => {
+                let (u, v) = sides;
+                let quad = crate::surfaces::Quad::new(*position, *u, *v, material.into());
+                builder.add(quad);
             }
         }
     }
@@ -255,6 +269,11 @@ enum Surface {
     Sphere {
         radius: f64,
         position: Point3,
+        material: Material,
+    },
+    Quad {
+        position: Point3,
+        sides: (Vec3, Vec3),
         material: Material,
     },
     Mesh {

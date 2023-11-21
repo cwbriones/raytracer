@@ -206,7 +206,6 @@ impl Triangle {
         if -1E-8 < det && det < 1E-8 {
             return None;
         }
-
         let inv_det = 1.0 / det;
         let tvec = ray.origin() - self.v0();
         let u = tvec.dot(&pvec) * inv_det;
@@ -243,10 +242,83 @@ impl Triangle {
     }
 }
 
+/// A quadrilateral primitive.
+#[derive(Debug, Clone)]
+pub struct Quad {
+    // The lower left corner of this quadrilateral.
+    q: Point3,
+    // The first side of the quadrilateral.
+    u: Vec3,
+    // The second side of the quadrilateral.
+    v: Vec3,
+    material: Material,
+
+    // cached unit normal
+    normal: Vec3,
+    d: f64,
+    w: Vec3,
+}
+
+impl Quad {
+    // Creates a new Quadrilateral.
+    pub fn new(q: Point3, u: Vec3, v: Vec3, material: Material) -> Self {
+        let n = u.cross(&v);
+        let normal = n.unit();
+        let d = normal.dot(&q.into());
+        let w = n / n.dot(&n);
+        Quad {
+            q,
+            u,
+            v,
+            material,
+            normal,
+            d,
+            w,
+        }
+    }
+
+    #[inline(always)]
+    pub fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+        let denom = self.normal.dot(&ray.dir());
+        if denom.abs() < 1E-8 {
+            return None;
+        }
+        let t = (self.d - self.normal.dot(&ray.origin().into())) / denom;
+        if t < 1E-4 || t < t_min || t > t_max {
+            return None;
+        }
+
+        // Determine whether or not the ray lies within the planar shape using its plain
+        // coordinates.
+        let intersection = ray.at(t);
+        let planar_hitpt_vector = intersection - self.q;
+        let alpha = self.w.dot(&planar_hitpt_vector.cross(&self.v));
+        let beta = self.w.dot(&self.u.cross(&planar_hitpt_vector));
+
+        if is_interior(alpha, beta) {
+            // TODO: Set surface coordinates
+            // Ray hits the 2d shape. Create the hit
+            Some(Hit::new(ray, t, self.normal, &self.material))
+        } else {
+            None
+        }
+    }
+
+    pub fn bounding_box(&self) -> Aabb {
+        let b = self.q + self.u + self.v;
+        Aabb::new(self.q.min_pointwise(&b), self.q.max_pointwise(&b)).pad(0.0001)
+    }
+}
+
+fn is_interior(a: f64, b: f64) -> bool {
+    (0.0..1.0).contains(&a) && (0.0..1.0).contains(&b)
+}
+
 #[derive(Debug, Clone)]
 pub enum Surface {
     Sphere(Sphere),
     Triangle(Triangle),
+    Quad(Quad),
 }
 
 impl Hittable for Surface {
@@ -254,7 +326,19 @@ impl Hittable for Surface {
         match *self {
             Self::Sphere(ref sphere) => sphere.hit(ray, t_min, t_max),
             Self::Triangle(ref triangle) => triangle.hit(ray, t_min, t_max),
+            Self::Quad(ref quad) => quad.hit(ray, t_min, t_max),
         }
+    }
+}
+
+impl Hittable for Vec<Surface> {
+    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+        for s in self {
+            if let Some(h) = s.hit(ray, t_min, t_max) {
+                return Some(h);
+            }
+        }
+        None
     }
 }
 
@@ -263,6 +347,7 @@ impl Bounded for Surface {
         match *self {
             Self::Sphere(ref sphere) => sphere.bounding_box(),
             Self::Triangle(ref triangle) => triangle.bounding_box(),
+            Self::Quad(ref quad) => quad.bounding_box(),
         }
     }
 }
@@ -276,6 +361,12 @@ impl From<Sphere> for Surface {
 impl From<Triangle> for Surface {
     fn from(triangle: Triangle) -> Self {
         Surface::Triangle(triangle)
+    }
+}
+
+impl From<Quad> for Surface {
+    fn from(quad: Quad) -> Self {
+        Surface::Quad(quad)
     }
 }
 

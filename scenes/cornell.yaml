@@ -4,51 +4,62 @@ camera:
     towards: [278, 278, 0]
 
 scene:
-    background: [0.01, 0.01, 0.01]
+    background: [0.0, 0.0, 0.0]
     surfaces:
-      - type: box
-        corners: [[130, 0, 65], [295, 165, 230]]
-        material:
-          type: lambertian
-          albedo: [.73, .73, .73] # white
-      - type: box
-        corners: [[265, 0, 295], [430, 330, 460]]
-        material:
-          type: lambertian
-          albedo: [.73, .73, .73] # white
-      - type: quad
-        position: [555,0,0]
-        sides: [[0,555,0], [0,0,555]]
-        material:
-          type: lambertian
-          albedo: [.12, .45, .15] # green
-      - type: quad
-        position:   [0,0,0]
-        sides: [[0,555,0], [0,0,555]]
-        material:
-          type: lambertian
-          albedo: [.65, .05, .05] # red
-      - type: quad
-        position: [343, 554, 332]
-        sides: [[-130,0,0], [0,0,-105]]
-        material:
-          type: diffuseLight
-          albedo: [15, 15, 15] # light
-      - type: quad
-        position: [0,0,0]
-        sides: [[555,0,0], [0,0,555]]
-        material:
-          type: lambertian
-          albedo: [.73, .73, .73] # white
-      - type: quad
-        position: [555,555,555]
-        sides: [[-555,0,0], [0,0,-555]]
-        material:
-          type: lambertian
-          albedo: [.73, .73, .73] # white
-      - type: quad
-        position: [0,0,555]
-        sides: [[555,0,0], [0,555,0]]
-        material:
-          type: lambertian
-          albedo: [.73, .73, .73] # white
+        - type: box
+          corners: [[265, 0, 295], [430, 330, 460]]
+          material:
+            type: lambertian
+            albedo: [.73, .73, .73] # white
+          transform:
+              - type: rotate
+                axis: y
+                angle: -15 # this should be positive!
+        - type: box
+          corners: [[0, 0, 0], [165, 165, 165]]
+          # corners: [[0, 0, 0], [165, 165, 165]]
+          material:
+            type: lambertian
+            albedo: [.73, .73, .73] # white
+          transform:
+              - type: rotate
+                axis: y
+                angle: 18
+              - type: translate
+                dir: [130, 0, 65]
+        - type: quad
+          position: [555,0,0]
+          sides: [[0,555,0], [0,0,555]]
+          material:
+            type: lambertian
+            albedo: [.12, .45, .15] # green
+        - type: quad
+          position:   [0,0,0]
+          sides: [[0,555,0], [0,0,555]]
+          material:
+            type: lambertian
+            albedo: [.65, .05, .05] # red
+        - type: quad
+          position: [343, 554, 332]
+          sides: [[-130,0,0], [0,0,-105]]
+          material:
+            type: diffuseLight
+            albedo: [15, 15, 15] # light
+        - type: quad
+          position: [0,0,0]
+          sides: [[555,0,0], [0,0,555]]
+          material:
+            type: lambertian
+            albedo: [.73, .73, .73] # white
+        - type: quad
+          position: [555,555,555]
+          sides: [[-555,0,0], [0,0,-555]]
+          material:
+            type: lambertian
+            albedo: [.73, .73, .73] # white
+        - type: quad
+          position: [0,0,555]
+          sides: [[555,0,0], [0,555,0]]
+          material:
+            type: lambertian
+            albedo: [.73, .73, .73] # white

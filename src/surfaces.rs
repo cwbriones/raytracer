@@ -246,12 +246,12 @@ impl Triangle {
 #[derive(Debug, Clone)]
 pub struct Quad {
     // The lower left corner of this quadrilateral.
-    q: Point3,
+    pub q: Point3,
     // The first side of the quadrilateral.
-    u: Vec3,
+    pub u: Vec3,
     // The second side of the quadrilateral.
-    v: Vec3,
-    material: Material,
+    pub v: Vec3,
+    pub material: Material,
 
     // cached unit normal
     normal: Vec3,

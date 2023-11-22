@@ -87,7 +87,11 @@ pub fn load_scene<P: AsRef<Path>>(
                 let quad = surfaces::Quad::new(*position, *u, *v, material.into());
                 builder.add(quad);
             }
-            Surface::Box { corners, material } => {
+            Surface::Box {
+                corners,
+                material,
+                transform,
+            } => {
                 let (a, b) = corners;
                 let min = a.min_pointwise(b);
                 let max = a.max_pointwise(b);
@@ -97,52 +101,95 @@ pub fn load_scene<P: AsRef<Path>>(
                 let dz = Vec3::new(0.0, 0.0, max.z() - min.z());
 
                 let material: crate::material::Material = material.into();
-                // front
-                builder.add(crate::surfaces::Quad::new(
-                    Point3::new(min.x(), min.y(), max.z()),
-                    dx,
-                    dy,
-                    material.clone(),
-                ));
-                // right
-                builder.add(crate::surfaces::Quad::new(
-                    Point3::new(max.x(), min.y(), max.z()),
-                    dz.negate(),
-                    dy,
-                    material.clone(),
-                ));
-                // back
-                builder.add(crate::surfaces::Quad::new(
-                    Point3::new(max.x(), min.y(), min.z()),
-                    dx.negate(),
-                    dy,
-                    material.clone(),
-                ));
-                // left
-                builder.add(crate::surfaces::Quad::new(
-                    Point3::new(min.x(), min.y(), min.z()),
-                    dz,
-                    dy,
-                    material.clone(),
-                ));
-                // top
-                builder.add(crate::surfaces::Quad::new(
-                    Point3::new(min.x(), max.y(), max.z()),
-                    dx,
-                    dz.negate(),
-                    material.clone(),
-                ));
-                // bottom
-                builder.add(crate::surfaces::Quad::new(
-                    Point3::new(min.x(), min.y(), min.z()),
-                    dx,
-                    dz,
-                    material,
-                ));
+                let quads = [
+                    // front
+                    crate::surfaces::Quad::new(
+                        Point3::new(min.x(), min.y(), max.z()),
+                        dx,
+                        dy,
+                        material.clone(),
+                    ),
+                    // right
+                    crate::surfaces::Quad::new(
+                        Point3::new(max.x(), min.y(), max.z()),
+                        dz.negate(),
+                        dy,
+                        material.clone(),
+                    ),
+                    // back
+                    crate::surfaces::Quad::new(
+                        Point3::new(max.x(), min.y(), min.z()),
+                        dx.negate(),
+                        dy,
+                        material.clone(),
+                    ),
+                    // left
+                    crate::surfaces::Quad::new(
+                        Point3::new(min.x(), min.y(), min.z()),
+                        dz,
+                        dy,
+                        material.clone(),
+                    ),
+                    // top
+                    crate::surfaces::Quad::new(
+                        Point3::new(min.x(), max.y(), max.z()),
+                        dx,
+                        dz.negate(),
+                        material.clone(),
+                    ),
+                    // bottom
+                    crate::surfaces::Quad::new(
+                        Point3::new(min.x(), min.y(), min.z()),
+                        dx,
+                        dz,
+                        material,
+                    ),
+                ];
+                let points = quads
+                    .iter()
+                    .flat_map(|quad| [quad.q, quad.q + quad.u + quad.v])
+                    .collect::<Vec<_>>();
+                let origin = compute_mesh_center(&points);
+                for q in &quads {
+                    builder.add(transform_quad(q, transform, origin));
+                }
             }
         }
     }
     Ok((builder.build(), config.camera.build(aspect_ratio)))
+}
+
+fn transform_quad(
+    quad: &surfaces::Quad,
+    transforms: &[Transform],
+    mut origin: Vec3,
+) -> surfaces::Quad {
+    let mut q1 = quad.q;
+    let mut q2 = quad.q + quad.u;
+    let mut q3 = quad.q + quad.v;
+    for t in transforms {
+        match *t {
+            Transform::Scale { factor } => {
+                for v in [&mut q1, &mut q2, &mut q3] {
+                    *v = factor * (*v - origin) + origin;
+                }
+            }
+            Transform::Rotate { ref axis, angle } => {
+                let axis = axis.to_vec();
+                let rotation = UnitQuaternion::rotation(axis, angle.to_radians());
+                for v in [&mut q1, &mut q2, &mut q3] {
+                    *v = rotation.rotate_point(*v - origin) + origin;
+                }
+            }
+            Transform::Translate { dir } => {
+                for v in [&mut q1, &mut q2, &mut q3] {
+                    *v += dir
+                }
+                origin += dir;
+            }
+        }
+    }
+    surfaces::Quad::new(q1, q2 - q1, q3 - q1, quad.material.clone())
 }
 
 fn load_mesh<P: AsRef<Path>>(
@@ -266,7 +313,7 @@ fn reader_at<P: AsRef<Path>>(path: P) -> Result<Box<dyn BufRead>, io::Error> {
 /// NOTE: This origin is computed by using the center of the bounding box.
 /// Alternatively, we could find the center-of-mass by taking the weighted
 /// average of each face's center.
-fn compute_mesh_center(vertices: &[Point3]) -> Vec3 {
+fn compute_mesh_center<'a, I: IntoIterator<Item = &'a Point3>>(vertices: I) -> Vec3 {
     let mut min_v = Point3::new(
         ::std::f64::INFINITY,
         ::std::f64::INFINITY,
@@ -332,6 +379,8 @@ enum Surface {
     Box {
         corners: (Point3, Point3),
         material: Material,
+        #[serde(default)]
+        transform: Vec<Transform>,
     },
     Mesh {
         path: PathBuf,

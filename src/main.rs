@@ -128,7 +128,11 @@ fn main() -> anyhow::Result<()> {
     let (scene, camera) = config.scene()?;
 
     let mut buf = vec![0; 3 * image_width * image_height];
-    let (progress, recorder) = progress::ProgressBar::new(image_width * image_height);
+    let recorder = if config.no_progress {
+        None
+    } else {
+        Some(progress::ProgressRecorder::new(image_width * image_height))
+    };
     let scene = scene.clone();
     let camera = camera.clone();
 
@@ -137,10 +141,6 @@ fn main() -> anyhow::Result<()> {
     // we need a perfect square.
     let sn = (samples_per_pixel as f64).sqrt().floor() as usize;
     let recip_sn = (sn as f64).recip();
-
-    if !config.no_progress {
-        rayon::spawn(move || progress.run(sn));
-    }
 
     // The camera coordinate width of each pixel
     let pixel_du = 1.0 / image_width as f64;
@@ -151,8 +151,8 @@ fn main() -> anyhow::Result<()> {
         .enumerate()
         .panic_fuse()
         .for_each_init(
-            || small_rng(config.seed),
-            |mut rng, (idx, pixel)| {
+            || (small_rng(config.seed), recorder.clone()),
+            |(ref mut rng, recorder), (idx, pixel)| {
                 // Pixel coordinates of our image
                 let pi = idx % image_width;
                 let pj = image_height - idx / image_width - 1;
@@ -171,14 +171,16 @@ fn main() -> anyhow::Result<()> {
                             let jitterv = -0.5 + recip_sn * (sj as f64 + rng.gen::<f64>());
                             let u = centeru + jitteru * pixel_du;
                             let v = centerv + jitterv * pixel_dv;
-                            let ray = camera.get_ray(&mut rng, u, v);
-                            scene.ray_color(ray, &mut rng, max_depth)
+                            let ray = camera.get_ray(rng, u, v);
+                            scene.ray_color(ray, rng, max_depth)
                         });
                 let color_vec = average(ray_colors);
                 pixel[0] = (256. * (color_vec.x()).sqrt().clamp(0.0, 0.999)) as u8;
                 pixel[1] = (256. * (color_vec.y()).sqrt().clamp(0.0, 0.999)) as u8;
                 pixel[2] = (256. * (color_vec.z()).sqrt().clamp(0.0, 0.999)) as u8;
-                recorder.record();
+                if let Some(r) = recorder {
+                    r.record(sn*sn);
+                }
             },
         );
 

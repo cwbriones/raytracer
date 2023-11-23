@@ -187,6 +187,13 @@ fn transform_quad(
                 }
                 origin += dir;
             }
+            Transform::TranslateTo { dest } => {
+                let dir = dest - origin;
+                for v in [&mut q1, &mut q2, &mut q3] {
+                    *v += dir
+                }
+                origin += dir;
+            }
         }
     }
     surfaces::Quad::new(q1, q2 - q1, q3 - q1, quad.material.clone())
@@ -254,7 +261,7 @@ fn load_mesh<P: AsRef<Path>>(
         .collect::<Vec<_>>();
     let indices = indices.iter().map(|u| *u as usize).collect::<Vec<_>>();
 
-    // Recenter the model
+    // Recompute the vertices relative to the model origin
     let mut mesh_origin = compute_mesh_center(&vertices);
     for v in vertices.iter_mut() {
         *v = *v - mesh_origin;
@@ -265,6 +272,7 @@ fn load_mesh<P: AsRef<Path>>(
                 for v in vertices.iter_mut() {
                     *v = factor * *v;
                 }
+                mesh_origin = compute_mesh_center(&vertices);
             }
             Transform::Rotate { ref axis, angle } => {
                 let axis = axis.to_vec();
@@ -274,6 +282,13 @@ fn load_mesh<P: AsRef<Path>>(
                 }
             }
             Transform::Translate { dir } => {
+                for v in vertices.iter_mut() {
+                    *v += dir;
+                }
+                mesh_origin += dir;
+            }
+            Transform::TranslateTo { dest } => {
+                let dir = dest - mesh_origin;
                 for v in vertices.iter_mut() {
                     *v += dir;
                 }
@@ -396,6 +411,7 @@ enum Transform {
     Scale { factor: f64 },
     Rotate { axis: RotationAxis, angle: f64 },
     Translate { dir: Vec3 },
+    TranslateTo { dest: Vec3 },
 }
 
 #[derive(Deserialize, Debug)]

@@ -4,7 +4,7 @@ camera:
     towards: [278, 278, 0]
 
 scene:
-    background: [0.01, 0.01, 0.01]
+    background: [0.0, 0.0, 0.0]
     surfaces:
         - type: mesh
           path: ./models/lucy.obj.gz

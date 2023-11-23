@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::sync::Arc;
 
 use rand::Rng;
@@ -69,7 +70,18 @@ impl SceneBuilder {
 }
 
 impl Scene {
-    pub fn ray_color<R: Rng>(
+    thread_local! {
+        static BUF: RefCell<Vec<(Vec3, Vec3)>> = const { RefCell::new(Vec::new()) };
+    }
+
+    pub fn ray_color<R: Rng>(&self, ray: Ray, rng: &mut R, max_depth: usize) -> Vec3 {
+        Self::BUF.with_borrow_mut(|buf| {
+            buf.clear();
+            self.ray_color_impl(ray, rng, max_depth, buf)
+        })
+    }
+
+    fn ray_color_impl<R: Rng>(
         &self,
         mut ray: Ray,
         rng: &mut R,
@@ -81,15 +93,10 @@ impl Scene {
         //
         // This prevents additional tracing iterations from adding stack frames.
         //
-        // Because of the emissivity calculation, we need to keep a stack of light
-        // emitted/attenuated at each iteration to then resolve once the ray has
-        // stopped scattering.
-        //
-        // FIXME: Because the color calculation is inherently recursive, we need to
-        // maintain a stack of light emitted/attenuated. This isn't inherently a problem
-        // but is awkward because the caller has to provide a buffer so that we don't
-        // allocate on every single call.
-        stack.clear();
+        // Because the color calculation is inherently recursive, we need to
+        // maintain a stack of light emitted/attenuated. This is handled using
+        // a thread_local so that the caller doesn't need to provide a fixed size
+        // buffer on every single call.
         let mut depth = 0;
         loop {
             if let Some(hit) = self.root.hit(&ray, 0.001, ::std::f64::INFINITY) {
@@ -107,10 +114,10 @@ impl Scene {
                 //
                 // Either way we stop scattering.
                 stack.push((emitted, Vec3::default()));
-                return resolve_color(stack);
+            } else {
+                // The ray escaped after bouncing.
+                stack.push((Vec3::default(), self.background));
             }
-            // The ray escaped after bouncing.
-            stack.push((Vec3::default(), self.background));
             return resolve_color(stack);
         }
     }

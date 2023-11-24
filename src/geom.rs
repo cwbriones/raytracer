@@ -469,6 +469,21 @@ mod test {
 
     const EPS: f64 = 1E-8;
 
+    macro_rules! assert_rel_eq {
+        ($lhs:expr, $rhs:expr, $msg:literal $(,)?) => {
+            assert!(
+                $lhs.rel_eq($rhs, EPS),
+                concat!($msg, "\nError greater than {}\n Left: {:?}\nRight: {:?}"),
+                EPS,
+                $lhs,
+                $rhs,
+            );
+        };
+        ($lhs:expr, $rhs:expr $(,)?) => {
+            assert_rel_eq!($lhs, $rhs, "",);
+        };
+    }
+
     #[test]
     fn quaternion_multiplication_table() {
         let i = UnitQuaternion::i();
@@ -488,28 +503,41 @@ mod test {
         let one = UnitQuaternion::new(0.0, 0.0, 0.0, 1.0);
         let neg_one = UnitQuaternion::new(0.0, 0.0, 0.0, -1.0);
 
-        assert!(ii.rel_eq(&neg_one, EPS), "ii = {:?}", ii);
-        assert!(jj.rel_eq(&neg_one, EPS), "jj = {:?}", jj);
-        assert!(kk.rel_eq(&neg_one, EPS), "kk = {:?}", kk);
-
-        assert!(ij.rel_eq(&k, EPS), "ij = {:?}", ij);
-        assert!(jk.rel_eq(&i, EPS), "jk = {:?}", jk);
-        assert!(ki.rel_eq(&j, EPS), "ki = {:?}", ki);
-
-        assert!(ijk.rel_eq(&neg_one, EPS), "ijk = {:?}", ijk);
-        assert!((one * one).rel_eq(&one, EPS), "1 * 1 = {:?}", one * one);
+        assert_rel_eq!(ii, &neg_one, "ii = -1");
+        assert_rel_eq!(jj, &neg_one, "jj = -1");
+        assert_rel_eq!(kk, &neg_one, "kk = -1");
+        assert_rel_eq!(ijk, &neg_one, "ijk = -1");
+        assert_rel_eq!(ij, &k, "ij = k");
+        assert_rel_eq!(jk, &i, "jk = i");
+        assert_rel_eq!(ki, &j, "ki = j");
+        assert_rel_eq!(one * one, &one, "1 * 1 = 1");
     }
 
     #[test]
     fn quaternion_rotation() {
-        let rotate_around_z = UnitQuaternion::rotation(Vec3::khat(), ::std::f64::consts::FRAC_PI_2);
         let ihat = Vec3::ihat();
+        let jhat = Vec3::jhat();
+        let khat = Vec3::khat();
 
-        let rotated = rotate_around_z.rotate_vec(ihat);
-        assert!(
-            rotated.rel_eq(&Vec3::jhat(), EPS),
-            "i-hat rotates 90deg around z-hat to j-hat"
+        let rotate_around_x = UnitQuaternion::rotation(ihat, ::std::f64::consts::FRAC_PI_2);
+        let rotated = rotate_around_x.rotate_vec(ihat);
+        assert_rel_eq!(
+            rotated,
+            &ihat,
+            "i-hat rotates 90deg around i-hat to remain unchanged",
         );
+
+        let rotate_around_y = UnitQuaternion::rotation(jhat, ::std::f64::consts::FRAC_PI_2);
+        let rotated = rotate_around_y.rotate_vec(ihat);
+        assert_rel_eq!(
+            rotated,
+            &(khat.negate()),
+            "i-hat rotates 90deg around j-hat to -k-hat",
+        );
+
+        let rotate_around_z = UnitQuaternion::rotation(khat, ::std::f64::consts::FRAC_PI_2);
+        let rotated = rotate_around_z.rotate_vec(ihat);
+        assert_rel_eq!(rotated, &jhat, "i-hat rotates 90deg around z-hat to j-hat",);
     }
 
     #[test]
@@ -524,10 +552,6 @@ mod test {
 
         let ihat = Vec3::ihat();
         let rotated = full_rotation.rotate_vec(ihat);
-        assert!(
-            rotated.rel_eq(&Vec3::khat(), EPS),
-            "Expected k-hat, got {:?}",
-            rotated
-        );
+        assert_rel_eq!(rotated, &Vec3::khat(),);
     }
 }

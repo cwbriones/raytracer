@@ -75,7 +75,7 @@ pub fn load_scene<P: AsRef<Path>>(
                 material,
             } => {
                 // FIXME: need to support generic translations
-                let sphere = surfaces::Sphere::new(*position, *radius, material.into());
+                let sphere = surfaces::Sphere::stationary(*position, *radius, material.into());
                 builder.add(sphere);
             }
             Surface::Quad {

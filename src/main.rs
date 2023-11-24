@@ -32,7 +32,7 @@ struct TracerOpt {
     /// supported formats: png, jpg
     #[arg(long, short, default_value = "output.png")]
     output: String,
-    #[arg(long, short, default_value_t = rayon::current_num_threads())]
+    #[arg(long, short, default_value_t = default_threads())]
     /// Number of render threads to use.
     threads: usize,
     /// Output image width.
@@ -61,6 +61,12 @@ struct TracerOpt {
     /// since it guarantees every surface intersection will be tested.
     #[arg(long)]
     no_bvh: bool,
+}
+
+fn default_threads() -> usize {
+    std::thread::available_parallelism()
+        .map(Into::into)
+        .unwrap_or(1)
 }
 
 impl TracerOpt {
@@ -100,7 +106,7 @@ fn main() -> anyhow::Result<()> {
 
     let start = Instant::now();
 
-    if config.threads != rayon::current_num_threads() {
+    if config.threads != default_threads() {
         rayon::ThreadPoolBuilder::new()
             .num_threads(config.threads)
             .build_global()

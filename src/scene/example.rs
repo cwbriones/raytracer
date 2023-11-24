@@ -25,7 +25,7 @@ pub fn one_weekend(aspect_ratio: f64) -> (Scene, Camera) {
     objects.set_background(Vec3::new(0.7, 0.8, 1.0));
 
     let ground_material = Material::lambertian(Vec3::new(0.5, 0.5, 0.5));
-    objects.add(Sphere::new(
+    objects.add(Sphere::stationary(
         Point3::new(0., -1000., 0.),
         1000.,
         ground_material,
@@ -45,25 +45,28 @@ pub fn one_weekend(aspect_ratio: f64) -> (Scene, Camera) {
                     // diffuse
                     let albedo = rng.gen::<Vec3>().mul_pointwise(&rng.gen::<Vec3>());
                     material = Material::lambertian(albedo);
+                    let center2 = center + Vec3::new(0., rng.gen_range(0.0..0.5), 0.);
+                    objects.add(Sphere::moving(center, center2, 0.2, material));
                 } else if choose_material < 0.95 {
                     // metal
                     let albedo = Vec3::rand_within(&mut rng, Uniform::new(0.5, 1.0));
                     let fuzz = rng.gen_range(0.0..0.5);
                     material = Material::metal(albedo, fuzz);
+                    objects.add(Sphere::stationary(center, 0.2, material));
                 } else {
                     // glass
                     material = Material::dielectric(1.5);
+                    objects.add(Sphere::stationary(center, 0.2, material));
                 }
-                objects.add(Sphere::new(center, 0.2, material));
             }
         }
     }
     let material1 = Material::lambertian(Vec3::new(0.05, 0.2, 0.6));
-    objects.add(Sphere::new(Point3::new(-4., 1., 0.), 1.0, material1));
+    objects.add(Sphere::stationary(Point3::new(-4., 1., 0.), 1.0, material1));
     let material2 = Material::dielectric(1.5);
-    objects.add(Sphere::new(Point3::new(0., 1., 0.), 1.0, material2));
+    objects.add(Sphere::stationary(Point3::new(0., 1., 0.), 1.0, material2));
     let material3 = Material::metal(Vec3::new(0.7, 0.6, 0.5), 0.0);
-    objects.add(Sphere::new(Point3::new(4., 1., 0.), 1.0, material3));
+    objects.add(Sphere::stationary(Point3::new(4., 1., 0.), 1.0, material3));
 
     (objects.build(), camera)
 }

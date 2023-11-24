@@ -77,10 +77,12 @@ impl Camera {
         let rd = self.lens_radius * rng.gen_in_unit_disk();
         let offset = self.basis.0 * rd.x() + self.basis.1 * rd.y();
         let offset_origin = self.origin - offset;
+        let ray_time = rng.gen_range(0.0..1.0);
 
         Ray::new(
             offset_origin,
             (self.lower_left + s * self.horizontal + t * self.vertical) - offset_origin,
+            ray_time,
         )
     }
 }

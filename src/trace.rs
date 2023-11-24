@@ -9,15 +9,17 @@ pub struct Ray {
     origin: Point3,
     dir: Vec3,
     inv_dir: Vec3,
+    time: f64,
 }
 
 impl Ray {
-    pub fn new(origin: Point3, dir: Vec3) -> Self {
+    pub fn new(origin: Point3, dir: Vec3, time: f64) -> Self {
         let inv_dir = Vec3::new(dir.x().recip(), dir.y().recip(), dir.z().recip());
         Self {
             origin,
             dir,
             inv_dir,
+            time,
         }
     }
 
@@ -35,6 +37,10 @@ impl Ray {
 
     pub fn at(&self, t: f64) -> Point3 {
         self.origin + self.dir * t
+    }
+
+    pub fn time(&self) -> f64 {
+        self.time
     }
 }
 

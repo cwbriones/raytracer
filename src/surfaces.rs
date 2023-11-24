@@ -15,33 +15,55 @@ use crate::trace::{
 
 #[derive(Debug, Clone)]
 pub struct Sphere {
-    center: Point3,
+    center_start: Point3,
+    center_end: Point3,
     radius: f64,
     material: Material,
 }
 
 impl Sphere {
-    pub fn new(center: Point3, radius: f64, material: Material) -> Self {
+    pub fn stationary(center: Point3, radius: f64, material: Material) -> Self {
         Sphere {
-            center,
+            center_start: center,
+            center_end: center,
             radius,
             material,
         }
+    }
+
+    pub fn moving(start: Point3, end: Point3, radius: f64, material: Material) -> Self {
+        Sphere {
+            center_start: start,
+            center_end: end,
+            radius,
+            material,
+        }
+    }
+
+    fn center(&self, t: f64) -> Point3 {
+        (1. - t) * self.center_start + (t * self.center_end).into()
     }
 }
 
 impl Bounded for Sphere {
     fn bounding_box(&self) -> Aabb {
-        let min = self.center - Vec3::new(self.radius, self.radius, self.radius);
-        let max = self.center + Vec3::new(self.radius, self.radius, self.radius);
-        Aabb::new(min, max)
+        let min = self.center(0.0) - Vec3::new(self.radius, self.radius, self.radius);
+        let max = self.center(0.0) + Vec3::new(self.radius, self.radius, self.radius);
+        let b1 = Aabb::new(min, max);
+
+        let min = self.center(1.0) - Vec3::new(self.radius, self.radius, self.radius);
+        let max = self.center(1.0) + Vec3::new(self.radius, self.radius, self.radius);
+        let b2 = Aabb::new(min, max);
+
+        b1.merge(&b2)
     }
 }
 
 impl Hittable for Sphere {
     #[inline(always)]
     fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
-        let oc = ray.origin() - self.center;
+        let center = self.center(ray.time());
+        let oc = ray.origin() - center;
         let a = ray.dir().square_length();
         let half_b = oc.dot(&ray.dir());
         let c = oc.square_length() - self.radius * self.radius;
@@ -53,13 +75,13 @@ impl Hittable for Sphere {
             let temp = (-half_b - root) / a;
             if t_min < temp && temp < t_max {
                 // First root
-                let outward_normal = (ray.at(temp) - self.center) / self.radius;
+                let outward_normal = (ray.at(temp) - center) / self.radius;
                 return Some(Hit::new(ray, temp, outward_normal, &self.material));
             }
             let temp = (-half_b + root) / a;
             if t_min < temp && temp < t_max {
                 // Second root
-                let outward_normal = (ray.at(temp) - self.center) / self.radius;
+                let outward_normal = (ray.at(temp) - center) / self.radius;
                 return Some(Hit::new(ray, temp, outward_normal, &self.material));
             }
         }
@@ -379,7 +401,7 @@ mod tests {
 
     #[test]
     fn sphere_bounding_box() {
-        let sphere = Sphere::new(
+        let sphere = Sphere::stationary(
             Point3::new(0., 0., 0.),
             1.0,
             Material::lambertian(Vec3::new(1.0, 1.0, 1.0)),

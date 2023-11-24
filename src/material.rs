@@ -78,7 +78,7 @@ impl MaterialKind {
 }
 
 #[inline(always)]
-fn lambertian_scatter<R: Rng>(_: &Ray, hit: &Hit, rng: &mut R) -> Ray {
+fn lambertian_scatter<R: Rng>(ray: &Ray, hit: &Hit, rng: &mut R) -> Ray {
     // True lambertian reflection utilizes vectors on the unit sphere,
     // not within it. However, the "approximation" with interior sampling
     // is somewhat more intuitive. The difference amounts to normalizing
@@ -95,15 +95,19 @@ fn lambertian_scatter<R: Rng>(_: &Ray, hit: &Hit, rng: &mut R) -> Ray {
         scatter_direction = hit.normal;
     }
 
-    Ray::new(hit.point, scatter_direction)
+    Ray::new(hit.point, scatter_direction, ray.time())
 }
 
 #[inline(always)]
 fn metallic_scatter<R: Rng>(fuzz: f64, ray: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
     let reflected = reflect(&ray.dir(), &hit.normal);
-    let scattered = Ray::new(hit.point, reflected + fuzz * rng.gen_in_unit_sphere());
+    let scattered = Ray::new(
+        hit.point,
+        reflected + fuzz * rng.gen_in_unit_sphere(),
+        ray.time(),
+    );
     if scattered.dir().dot(&hit.normal) > 1e-8 {
-        Some(Ray::new(hit.point, scattered.dir()))
+        Some(scattered)
     } else {
         None
     }
@@ -127,7 +131,7 @@ fn dielectric_scatter<R: Rng>(refractive_index: f64, ray: &Ray, hit: &Hit, rng: 
         } else {
             refract(&unit_dir, &hit.normal, refraction_ratio)
         };
-    Ray::new(hit.point, scatter_dir)
+    Ray::new(hit.point, scatter_dir, ray.time())
 }
 
 fn reflectance(cosine: f64, refractive_index: f64) -> f64 {

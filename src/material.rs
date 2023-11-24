@@ -1,6 +1,9 @@
 use rand::Rng;
 
-use crate::geom::Vec3;
+use crate::geom::{
+    Point3,
+    Vec3,
+};
 use crate::trace::{
     Hit,
     Ray,
@@ -9,48 +12,52 @@ use crate::util::RandUtil;
 
 #[derive(Debug, Clone)]
 pub struct Material {
-    albedo: Vec3,
     kind: MaterialKind,
+    texture: Texture,
 }
 
 impl Material {
-    pub fn lambertian(albedo: Vec3) -> Self {
+    pub fn lambertian<T: Into<Texture>>(texture: T) -> Self {
         Material {
-            albedo,
+            texture: texture.into(),
             kind: MaterialKind::Lambertian,
         }
     }
 
     pub fn metal(albedo: Vec3, fuzz: f64) -> Self {
         Material {
-            albedo,
+            texture: Texture::SolidColor(albedo),
             kind: MaterialKind::Metal(fuzz),
         }
     }
 
     pub fn dielectric(refractive_index: f64) -> Self {
         Material {
-            albedo: Vec3::new(1.0, 1.0, 1.0),
+            texture: Texture::SolidColor(Vec3::new(1.0, 1.0, 1.0)),
             kind: MaterialKind::Dielectric(refractive_index),
         }
     }
 
     pub fn diffuse_light(albedo: Vec3) -> Self {
         Material {
-            albedo,
+            texture: Texture::SolidColor(albedo),
             kind: MaterialKind::DiffuseLight,
         }
     }
 
     #[inline(always)]
     pub fn scatter<R: Rng>(&self, ray: &Ray, hit: &Hit, rng: &mut R) -> Option<(Vec3, Ray)> {
-        self.kind.scatter(ray, hit, rng).map(|r| (self.albedo, r))
+        self.kind.scatter(ray, hit, rng).map(|r| {
+            let albedo = self.texture.color_at(hit.u, hit.v, &hit.point);
+            (albedo, r)
+        })
     }
 
-    pub fn emit(&self, _: &Hit) -> Vec3 {
-        match self.kind {
-            MaterialKind::DiffuseLight => self.albedo,
-            _ => Vec3::default(),
+    pub fn emit(&self, hit: &Hit) -> Vec3 {
+        if let MaterialKind::DiffuseLight = self.kind {
+            self.texture.color_at(hit.u, hit.v, &hit.point)
+        } else {
+            Vec3::default()
         }
     }
 }
@@ -154,4 +161,55 @@ fn refract(uv: &Vec3, n: &Vec3, etai_over_etat: f64) -> Vec3 {
     let r_out_parallel = -1.0 * (1.0 - r_out_perp.square_length()).abs().sqrt() * *n;
 
     r_out_perp + r_out_parallel
+}
+
+#[derive(Debug, Clone)]
+pub enum Texture {
+    SolidColor(Vec3),
+    Checker(Checker),
+}
+
+impl Texture {
+    pub fn checker(scale: f64, even: Vec3, odd: Vec3) -> Self {
+        let inv_scale = 1.0 / scale;
+        Self::Checker(Checker {
+            inv_scale,
+            even,
+            odd,
+        })
+    }
+
+    pub fn color_at(&self, u: f64, v: f64, point: &Point3) -> Vec3 {
+        match self {
+            Texture::SolidColor(c) => *c,
+            Texture::Checker(texture) => texture.color_at(u, v, point),
+        }
+    }
+}
+
+impl From<Vec3> for Texture {
+    fn from(value: Vec3) -> Self {
+        Texture::SolidColor(value)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Checker {
+    inv_scale: f64,
+    even: Vec3,
+    odd: Vec3,
+}
+
+impl Checker {
+    fn color_at(&self, _: f64, _: f64, point: &Point3) -> Vec3 {
+        let x = (self.inv_scale * point.x()).floor() as isize;
+        let y = (self.inv_scale * point.y()).floor() as isize;
+        let z = (self.inv_scale * point.z()).floor() as isize;
+
+        if (x + y + z) % 2 == 0 {
+            self.even
+        } else {
+            self.odd
+        }
+    }
 }

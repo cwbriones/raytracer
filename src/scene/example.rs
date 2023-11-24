@@ -1,4 +1,6 @@
 /// Example scenes as shown in the Ray Tracing in One Weeked series.
+use std::str::FromStr;
+
 use rand::distributions::Uniform;
 use rand::Rng;
 
@@ -8,11 +10,52 @@ use crate::geom::{
     Point3,
     Vec3,
 };
-use crate::material::Material;
+use crate::material::{
+    Material,
+    Texture,
+};
 use crate::surfaces::Sphere;
 
+#[derive(Debug, Clone)]
+pub enum Example {
+    OneWeekend,
+    TwoSpheres,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct InvalidExample;
+
+impl ::std::error::Error for InvalidExample {}
+
+impl ::std::fmt::Display for InvalidExample {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid example")
+    }
+}
+
+impl FromStr for Example {
+    type Err = InvalidExample;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "one_weekend" => Ok(Example::OneWeekend),
+            "two_spheres" => Ok(Example::TwoSpheres),
+            _ => Err(InvalidExample),
+        }
+    }
+}
+
+impl Example {
+    pub fn scene(&self, aspect_ratio: f64) -> (Scene, Camera) {
+        match self {
+            Example::OneWeekend => one_weekend(aspect_ratio),
+            Example::TwoSpheres => two_spheres(aspect_ratio),
+        }
+    }
+}
+
 /// Create a random scene as shown in the final section of Ray Tracing in One Weekend.
-pub fn one_weekend(aspect_ratio: f64) -> (Scene, Camera) {
+fn one_weekend(aspect_ratio: f64) -> (Scene, Camera) {
     let camera = Camera::builder(20.0, aspect_ratio)
         .from(Point3::new(13., 2., 3.))
         .towards(Point3::new(0., 0., 0.))
@@ -24,7 +67,11 @@ pub fn one_weekend(aspect_ratio: f64) -> (Scene, Camera) {
     let mut objects = Scene::builder();
     objects.set_background(Vec3::new(0.7, 0.8, 1.0));
 
-    let ground_material = Material::lambertian(Vec3::new(0.5, 0.5, 0.5));
+    let ground_material = Material::lambertian(Texture::checker(
+        0.32,
+        Vec3::new(0.2, 0.3, 0.1),
+        Vec3::new(0.9, 0.9, 0.9),
+    ));
     objects.add(Sphere::stationary(
         Point3::new(0., -1000., 0.),
         1000.,
@@ -69,4 +116,32 @@ pub fn one_weekend(aspect_ratio: f64) -> (Scene, Camera) {
     objects.add(Sphere::stationary(Point3::new(4., 1., 0.), 1.0, material3));
 
     (objects.build(), camera)
+}
+
+fn two_spheres(aspect_ratio: f64) -> (Scene, Camera) {
+    let camera = Camera::builder(20.0, aspect_ratio)
+        .from((13.0, 2.0, 3.0))
+        .towards((0.0, 0.0, 0.0))
+        .build();
+
+    let checker = Material::lambertian(Texture::checker(
+        0.8,
+        Vec3::new(0.2, 0.3, 0.1),
+        Vec3::new(0.9, 0.9, 0.9),
+    ));
+
+    let mut world = Scene::builder();
+    world.set_background(Vec3::new(0.7, 0.8, 1.0));
+    world.add(Sphere::stationary(
+        Point3::new(0.0, -10.0, 0.0),
+        10.0,
+        checker.clone(),
+    ));
+    world.add(Sphere::stationary(
+        Point3::new(0.0, 10.0, 0.0),
+        10.0,
+        checker,
+    ));
+
+    (world.build(), camera)
 }

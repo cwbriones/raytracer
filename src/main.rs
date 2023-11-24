@@ -52,6 +52,9 @@ struct TracerOpt {
     /// A scene file to load from configuration.
     #[arg(long)]
     scene: Option<String>,
+    /// An example scene from the book, generated at random.
+    #[arg(long)]
+    example: Option<scene::example::Example>,
     /// Disables diplaying the estimate of time remaining.
     #[arg(long)]
     no_progress: bool,
@@ -91,12 +94,24 @@ impl TracerOpt {
             TracerOpt::DEFAULT_ASPECT_RATIO
         }
     }
+
+    fn scene(&self) -> Result<(scene::Scene, camera::Camera), anyhow::Error> {
+        let aspect_ratio = self.aspect_ratio();
+        if let Some(ref path) = self.scene {
+            return scene::load_scene(path, aspect_ratio, !self.no_bvh)
+                .with_context(|| format!("load scene file '{path}'"));
+        }
+        Ok(self
+            .example
+            .clone()
+            .unwrap_or(scene::example::Example::OneWeekend)
+            .scene(aspect_ratio))
+    }
 }
 
 fn main() -> anyhow::Result<()> {
     let config = TracerOpt::parse();
 
-    let aspect_ratio = config.aspect_ratio();
     let image_width = config.width;
     let _threads = config.threads;
     let image_height = config.height();
@@ -112,13 +127,7 @@ fn main() -> anyhow::Result<()> {
             .build_global()
             .expect("init global threadpool");
     }
-
-    let (scene, camera) = if let Some(ref path) = config.scene {
-        scene::load_scene(path, aspect_ratio, !config.no_bvh)
-            .with_context(|| format!("load scene file '{path}'"))?
-    } else {
-        scene::example::one_weekend(aspect_ratio)
-    };
+    let (scene, camera) = config.scene()?;
 
     let mut buf = vec![0; 3 * image_width * image_height];
     let (progress, recorder) = progress::ProgressBar::new(image_width * image_height);

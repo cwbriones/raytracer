@@ -88,11 +88,13 @@ impl Camera {
 }
 
 impl CameraBuilder {
-    pub fn from(self, from: Point3) -> Self {
+    pub fn from<T: Into<Point3>>(self, from: T) -> Self {
+        let from = from.into();
         CameraBuilder { from, ..self }
     }
 
-    pub fn towards(self, towards: Point3) -> Self {
+    pub fn towards<T: Into<Point3>>(self, towards: T) -> Self {
+        let towards = towards.into();
         CameraBuilder { towards, ..self }
     }
 

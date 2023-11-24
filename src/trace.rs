@@ -44,13 +44,14 @@ impl Ray {
     }
 }
 
-#[derive(Clone)]
 pub struct Hit<'m> {
     pub point: Point3,
     pub normal: Vec3,
     pub t: f64,
     pub front_face: bool,
     pub material: &'m Material,
+    pub u: f64,
+    pub v: f64,
 }
 
 impl<'m> Hit<'m> {
@@ -68,6 +69,8 @@ impl<'m> Hit<'m> {
             t,
             front_face,
             material,
+            u: 0.,
+            v: 0.,
         }
     }
 }

@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use rand::Rng;
-
 use crate::trace::{
     Aabb,
     Bounded,
@@ -9,7 +7,6 @@ use crate::trace::{
     Hittable,
     Ray,
 };
-use crate::util::NonNan;
 
 /// The cost of computing an intersection given a ray.
 const INTERSECT_COST: f64 = 1.0;
@@ -50,7 +47,7 @@ where
 
     /// Construct a BVH by dividing each level evenly each time.
     #[allow(unused)]
-    pub fn new_naive<R: Rng>(surfaces: &mut [S]) -> Self {
+    pub fn new_naive(surfaces: &mut [S]) -> Self {
         Bvh {
             root: BVHNode::new_with_strategy(surfaces, &mut EqualSplitStrategy),
         }
@@ -127,7 +124,7 @@ where
                     + right.surface_area() * (surfaces.len() - split_idx) as f64 * INTERSECT_COST;
                 (split_idx, split_cost)
             })
-            .min_by_key(|(_, cost)| NonNan::new(*cost).unwrap())
+            .min_by(|(_, costa), (_, costb)| costa.partial_cmp(costb).expect("not NaN"))
             .unwrap();
 
         if best_cost >= (root_bound.surface_area() * surfaces.len() as f64 * INTERSECT_COST) {
@@ -157,12 +154,12 @@ where
         //
         // This is the distance between the rightmost and leftmost
         // bounding boxes on a given axis.
-        let axis = (0usize..3)
-            .max_by_key(|i| {
+        let (axis, _) = (0usize..3)
+            .map(|i| {
                 let mut min = f64::INFINITY;
                 let mut max = 0.0;
                 for surface in surfaces.iter() {
-                    let p = surface.bounding_box().centroid().get(*i);
+                    let p = surface.bounding_box().centroid().get(i);
                     if p < min {
                         min = p;
                     }
@@ -170,8 +167,9 @@ where
                         max = p;
                     }
                 }
-                NonNan::new(max - min).unwrap()
+                (i, max - min)
             })
+            .max_by(|(_, spana), (_, spanb)| spana.partial_cmp(spanb).expect("not NaN"))
             .unwrap();
 
         let comparator = |a: &S, b: &S| {

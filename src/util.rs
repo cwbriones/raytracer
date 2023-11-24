@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use rand::distributions::Uniform;
 use rand::Rng;
 
@@ -34,32 +32,5 @@ where
                 return v;
             }
         }
-    }
-}
-
-#[derive(PartialEq, Clone, Copy)]
-pub struct NonNan(f64);
-
-impl NonNan {
-    pub fn new(val: f64) -> Option<NonNan> {
-        if val.is_nan() {
-            None
-        } else {
-            Some(NonNan(val))
-        }
-    }
-}
-
-impl Eq for NonNan {}
-
-impl PartialOrd for NonNan {
-    fn partial_cmp(&self, other: &NonNan) -> Option<Ordering> {
-        self.0.partial_cmp(&other.0)
-    }
-}
-
-impl Ord for NonNan {
-    fn cmp(&self, other: &NonNan) -> Ordering {
-        self.partial_cmp(other).unwrap()
     }
 }

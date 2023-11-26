@@ -73,6 +73,18 @@ impl<'m> Hit<'m> {
             v: 0.,
         }
     }
+
+    pub fn with_uv(&self, u: f64, v: f64) -> Self {
+        Hit {
+            point: self.point,
+            normal: self.normal,
+            t: self.t,
+            front_face: self.front_face,
+            material: self.material,
+            u,
+            v,
+        }
+    }
 }
 
 /// An axis-aligned bounding box.
@@ -105,7 +117,7 @@ impl Aabb {
     }
 
     #[inline(always)]
-    pub fn hit(&self, ray: &Ray, mut t_min: f64, mut t_max: f64) -> bool {
+    pub fn hit(&self, ray: &Ray, Interval(mut t_min, mut t_max): Interval) -> bool {
         // Maybe do this with SIMD intrinsics?
         // Check all directions at once
         for a in 0..3 {
@@ -150,12 +162,22 @@ impl Aabb {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct Interval(pub f64, pub f64);
+
+impl Interval {
+    #[inline(always)]
+    pub fn contains(&self, t: f64) -> bool {
+        self.0 <= t && t <= self.1
+    }
+}
+
 /// An object within the scene that can be hit by rays.
 pub trait Hittable {
     /// Attempt to hit object with `ray`, returning the hit that occurred, if any.
     ///
     /// The hit must not be returned if it occured at time t outside [t_min, t_max].
-    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit>;
+    fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit>;
 }
 
 /// An object that has a bounding box (i.e. one that is finite in extent).

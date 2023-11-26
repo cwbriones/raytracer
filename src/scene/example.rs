@@ -124,8 +124,8 @@ fn two_spheres(aspect_ratio: f64) -> (Scene, Camera) {
         .towards((0.0, 0.0, 0.0))
         .build();
 
-    let checker = Material::lambertian(Texture::checker(
-        0.8,
+    let checker = Material::lambertian(Texture::uv_checker(
+        30.0,
         Vec3::new(0.2, 0.3, 0.1),
         Vec3::new(0.9, 0.9, 0.9),
     ));

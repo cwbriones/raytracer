@@ -7,6 +7,7 @@ use crate::bvh::Bvh;
 use crate::geom::Vec3;
 use crate::surfaces::Surface;
 use crate::trace::Hittable;
+use crate::trace::Interval;
 use crate::trace::Ray;
 
 pub mod example;
@@ -99,7 +100,8 @@ impl Scene {
         // buffer on every single call.
         let mut depth = 0;
         loop {
-            if let Some(hit) = self.root.hit(&ray, 0.001, ::std::f64::INFINITY) {
+            let interval = Interval(0.001, ::std::f64::INFINITY);
+            if let Some(hit) = self.root.hit(&ray, interval) {
                 let emitted = hit.material.emit(&hit);
                 if let Some((cur_attenuation, scattered)) = hit.material.scatter(&ray, &hit, rng) {
                     // The ray was scattered in a different direction. Continue following it.

@@ -167,22 +167,27 @@ fn refract(uv: &Vec3, n: &Vec3, etai_over_etat: f64) -> Vec3 {
 pub enum Texture {
     SolidColor(Vec3),
     Checker(Checker),
+    UVChecker(UVChecker),
 }
 
 impl Texture {
     pub fn checker(scale: f64, even: Vec3, odd: Vec3) -> Self {
-        let inv_scale = 1.0 / scale;
         Self::Checker(Checker {
-            inv_scale,
+            inv_scale: scale.recip(),
             even,
             odd,
         })
+    }
+
+    pub fn uv_checker(scale: f64, even: Vec3, odd: Vec3) -> Self {
+        Self::UVChecker(UVChecker { scale, even, odd })
     }
 
     pub fn color_at(&self, u: f64, v: f64, point: &Point3) -> Vec3 {
         match self {
             Texture::SolidColor(c) => *c,
             Texture::Checker(texture) => texture.color_at(u, v, point),
+            Texture::UVChecker(texture) => texture.color_at(u, v, point),
         }
     }
 }
@@ -205,8 +210,26 @@ impl Checker {
         let x = (self.inv_scale * point.x()).floor() as isize;
         let y = (self.inv_scale * point.y()).floor() as isize;
         let z = (self.inv_scale * point.z()).floor() as isize;
-
         if (x + y + z) % 2 == 0 {
+            self.even
+        } else {
+            self.odd
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UVChecker {
+    scale: f64,
+    even: Vec3,
+    odd: Vec3,
+}
+
+impl UVChecker {
+    fn color_at(&self, u: f64, v: f64, _: &Point3) -> Vec3 {
+        let u = (self.scale * u).floor() as isize;
+        let v = (self.scale * v).floor() as isize;
+        if (u + v) % 2 == 0 {
             self.even
         } else {
             self.odd

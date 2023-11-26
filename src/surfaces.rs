@@ -1,3 +1,4 @@
+use std::f64::consts::PI;
 use std::sync::Arc;
 
 use crate::geom::{
@@ -10,6 +11,7 @@ use crate::trace::{
     Bounded,
     Hit,
     Hittable,
+    Interval,
     Ray,
 };
 
@@ -61,7 +63,7 @@ impl Bounded for Sphere {
 
 impl Hittable for Sphere {
     #[inline(always)]
-    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+    fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
         let center = self.center(ray.time());
         let oc = ray.origin() - center;
         let a = ray.dir().square_length();
@@ -73,21 +75,39 @@ impl Hittable for Sphere {
             // The point of intersection.
             let root = discriminant.sqrt();
             let temp = (-half_b - root) / a;
-            if t_min < temp && temp < t_max {
+            if interval.contains(temp) {
                 // First root
-                let outward_normal = (ray.at(temp) - center) / self.radius;
-                return Some(Hit::new(ray, temp, outward_normal, &self.material));
+                let point = ray.at(temp);
+                let outward_normal = (point - center) / self.radius;
+                let (u, v) = get_sphere_uv(outward_normal);
+                let hit = Hit::new(ray, temp, outward_normal, &self.material).with_uv(u, v);
+                return Some(hit);
             }
             let temp = (-half_b + root) / a;
-            if t_min < temp && temp < t_max {
+            if interval.contains(temp) {
                 // Second root
-                let outward_normal = (ray.at(temp) - center) / self.radius;
-                return Some(Hit::new(ray, temp, outward_normal, &self.material));
+                let point = ray.at(temp);
+                let outward_normal = (point - center) / self.radius;
+                let (u, v) = get_sphere_uv(outward_normal);
+                let hit = Hit::new(ray, temp, outward_normal, &self.material).with_uv(u, v);
+                return Some(hit);
             }
         }
         // Does not hit the sphere.
         None
     }
+}
+
+fn get_sphere_uv(n: Vec3) -> (f64, f64) {
+    // p: a given point on the sphere of radius one, centered at the origin.
+    // u: returned value [0,1] of angle around the Y axis from X=-1.
+    // v: returned value [0,1] of angle from Y=-1 to Y=+1.
+    //     <1 0 0> yields <0.50 0.50>       <-1  0  0> yields <0.00 0.50>
+    //     <0 1 0> yields <0.50 1.00>       < 0 -1  0> yields <0.50 0.00>
+    //     <0 0 1> yields <0.25 0.50>       < 0  0 -1> yields <0.75 0.50>
+    let theta = (-n.y()).acos();
+    let phi = (-n.z()).atan2(n.x()) + PI;
+    (phi / (2.0 * PI), theta / PI)
 }
 
 /// A triangular mesh.
@@ -216,7 +236,7 @@ impl Triangle {
     }
 
     #[inline(always)]
-    pub fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+    pub fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
         // TODO: Understand and annotate this code.
         let e1 = self.v1() - self.v0();
         let e2 = self.v2() - self.v0();
@@ -244,7 +264,7 @@ impl Triangle {
         }
 
         let t = e2.dot(&qvec) * inv_det;
-        if t < 1E-4 || t < t_min || t > t_max {
+        if t < 1E-4 || !interval.contains(t) {
             return None;
         }
         let normal = u * self.n1() + v * self.n2() + (1f64 - u - v) * self.n0();
@@ -300,13 +320,13 @@ impl Quad {
     }
 
     #[inline(always)]
-    pub fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+    pub fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
         let denom = self.normal.dot(&ray.dir());
         if denom.abs() < 1E-8 {
             return None;
         }
         let t = (self.d - self.normal.dot(&ray.origin().into())) / denom;
-        if t < 1E-4 || t < t_min || t > t_max {
+        if t < 1E-4 || !interval.contains(t) {
             return None;
         }
 
@@ -344,21 +364,21 @@ pub enum Surface {
 }
 
 impl Hittable for Surface {
-    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+    fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
         match *self {
-            Self::Sphere(ref sphere) => sphere.hit(ray, t_min, t_max),
-            Self::Triangle(ref triangle) => triangle.hit(ray, t_min, t_max),
-            Self::Quad(ref quad) => quad.hit(ray, t_min, t_max),
+            Self::Sphere(ref sphere) => sphere.hit(ray, interval),
+            Self::Triangle(ref triangle) => triangle.hit(ray, interval),
+            Self::Quad(ref quad) => quad.hit(ray, interval),
         }
     }
 }
 
 impl Hittable for Vec<Surface> {
-    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+    fn hit(&self, ray: &Ray, Interval(t_min, t_max): Interval) -> Option<Hit> {
         let mut closest = t_max;
         let mut closest_hit = None;
         for o in self {
-            if let Some(hit) = o.hit(ray, t_min, closest) {
+            if let Some(hit) = o.hit(ray, Interval(t_min, closest)) {
                 closest = hit.t;
                 closest_hit = Some(hit);
             }

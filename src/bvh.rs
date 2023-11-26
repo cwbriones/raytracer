@@ -5,6 +5,7 @@ use crate::trace::{
     Bounded,
     Hit,
     Hittable,
+    Interval,
     Ray,
 };
 
@@ -58,8 +59,8 @@ impl<S> Hittable for Bvh<S>
 where
     S: Hittable + Bounded,
 {
-    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
-        self.root.hit(ray, t_min, t_max)
+    fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
+        self.root.hit(ray, interval)
     }
 }
 
@@ -206,10 +207,10 @@ impl<S> BVHNode<S>
 where
     S: Hittable + Bounded,
 {
-    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
+    fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
         match *self {
-            Self::Inner(ref inner) => inner.hit(ray, t_min, t_max),
-            Self::Leaf(ref leaf) => leaf.hit(ray, t_min, t_max),
+            Self::Inner(ref inner) => inner.hit(ray, interval),
+            Self::Leaf(ref leaf) => leaf.hit(ray, interval),
         }
     }
 
@@ -233,12 +234,12 @@ where
     S: Hittable + Bounded,
 {
     #[inline(always)]
-    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
-        if !self.bound.hit(ray, t_min, t_max) {
+    fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
+        if !self.bound.hit(ray, interval) {
             return None;
         }
-        let hit_left = self.left.as_ref().and_then(|n| n.hit(ray, t_min, t_max));
-        let hit_right = self.right.as_ref().and_then(|n| n.hit(ray, t_min, t_max));
+        let hit_left = self.left.as_ref().and_then(|n| n.hit(ray, interval));
+        let hit_right = self.right.as_ref().and_then(|n| n.hit(ray, interval));
         match (hit_left, hit_right) {
             (None, None) => None,
             (hit @ Some(_), None) => hit,
@@ -274,14 +275,15 @@ where
         }
     }
 
-    fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> Option<Hit> {
-        if !self.bound.hit(ray, t_min, t_max) {
+    fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
+        if !self.bound.hit(ray, interval) {
             return None;
         }
+        let Interval(t_min, t_max) = interval;
         let mut closest = t_max;
         let mut closest_hit = None;
         for o in &self.surfaces[..] {
-            if let Some(hit) = o.hit(ray, t_min, closest) {
+            if let Some(hit) = o.hit(ray, Interval(t_min, closest)) {
                 closest = hit.t;
                 closest_hit = Some(hit);
             }

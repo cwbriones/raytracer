@@ -1,8 +1,11 @@
 use std::f64::consts::PI;
 use std::sync::Arc;
 
+use rand::Rng;
+
 use crate::geom::{
     Point3,
+    UnitQuaternion,
     Vec3,
 };
 use crate::material::Material;
@@ -361,6 +364,10 @@ pub enum Surface {
     Sphere(Sphere),
     Triangle(Triangle),
     Quad(Quad),
+    Group(Group),
+    Rotated(Rotated),
+    Translated(Translated),
+    ConstantMedium(ConstantMedium),
 }
 
 impl Hittable for Surface {
@@ -369,6 +376,10 @@ impl Hittable for Surface {
             Self::Sphere(ref sphere) => sphere.hit(ray, interval),
             Self::Triangle(ref triangle) => triangle.hit(ray, interval),
             Self::Quad(ref quad) => quad.hit(ray, interval),
+            Self::Group(ref g) => g.hit(ray, interval),
+            Self::Translated(ref t) => t.hit(ray, interval),
+            Self::Rotated(ref r) => r.hit(ray, interval),
+            Self::ConstantMedium(ref r) => r.hit(ray, interval),
         }
     }
 }
@@ -393,6 +404,10 @@ impl Bounded for Surface {
             Self::Sphere(ref sphere) => sphere.bounding_box(),
             Self::Triangle(ref triangle) => triangle.bounding_box(),
             Self::Quad(ref quad) => quad.bounding_box(),
+            Self::Group(ref g) => g.bounding_box(),
+            Self::Translated(ref t) => t.bounding_box(),
+            Self::Rotated(ref r) => r.bounding_box(),
+            Self::ConstantMedium(ref c) => c.bounding_box(),
         }
     }
 }
@@ -412,6 +427,270 @@ impl From<Triangle> for Surface {
 impl From<Quad> for Surface {
     fn from(quad: Quad) -> Self {
         Surface::Quad(quad)
+    }
+}
+
+impl From<Group> for Surface {
+    fn from(value: Group) -> Self {
+        Surface::Group(value)
+    }
+}
+
+impl From<Translated> for Surface {
+    fn from(value: Translated) -> Self {
+        Surface::Translated(value)
+    }
+}
+
+impl From<Rotated> for Surface {
+    fn from(value: Rotated) -> Self {
+        Surface::Rotated(value)
+    }
+}
+
+impl From<ConstantMedium> for Surface {
+    fn from(value: ConstantMedium) -> Self {
+        Surface::ConstantMedium(value)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Group {
+    hittables: Arc<[Surface]>,
+    bound: Aabb,
+}
+
+impl Group {
+    pub fn new<S: Into<Surface>>(hittables: Vec<S>) -> Self {
+        let mut surfaces: Vec<Surface> = Vec::with_capacity(hittables.len());
+        for s in hittables {
+            surfaces.push(s.into());
+        }
+        let mut bound = surfaces[0].bounding_box();
+        for obj in &surfaces[1..] {
+            bound = bound.merge(&obj.bounding_box());
+        }
+        Self {
+            hittables: surfaces.into(),
+            bound,
+        }
+    }
+}
+
+impl Hittable for Group {
+    fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
+        if !self.bound.hit(ray, interval) {
+            return None;
+        }
+        let Interval(t_min, t_max) = interval;
+        let mut closest = t_max;
+        let mut closest_hit = None;
+        for o in &self.hittables[..] {
+            if let Some(hit) = o.hit(ray, Interval(t_min, closest)) {
+                closest = hit.t;
+                closest_hit = Some(hit);
+            }
+        }
+        closest_hit
+    }
+}
+
+impl Bounded for Group {
+    fn bounding_box(&self) -> Aabb {
+        self.bound.clone()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Translated {
+    hittable: Arc<Surface>,
+    offset: Vec3,
+    bound: Aabb,
+}
+
+impl Translated {
+    pub fn new<T: Into<Surface>>(hittable: T, offset: Vec3) -> Self {
+        let hittable = hittable.into();
+        let bound = hittable.bounding_box();
+        Translated {
+            hittable: Arc::new(hittable),
+            offset,
+            bound: bound.translate(offset),
+        }
+    }
+}
+
+impl Hittable for Translated {
+    fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
+        // Transform the ray into object space
+        let objray = Ray::new(ray.origin() - self.offset, ray.dir(), ray.time());
+        self.hittable.hit(&objray, interval).map(|h| {
+            // Translate hit back into world space by replacing ray
+            Hit::new(ray, h.t, h.normal, h.material)
+        })
+    }
+}
+
+impl Bounded for Translated {
+    fn bounding_box(&self) -> Aabb {
+        self.bound.clone()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Rotated {
+    hittable: Arc<Surface>,
+    rot: UnitQuaternion,
+    bound: Aabb,
+    center: Point3,
+}
+
+impl Rotated {
+    pub fn new<S: Into<Surface>>(hittable: S, axis: Vec3, angle: f64) -> Self {
+        let hittable = hittable.into();
+        let bound = hittable.bounding_box();
+        Rotated {
+            hittable: Arc::new(hittable),
+            rot: UnitQuaternion::rotation(axis, angle),
+            bound: bound.rotate(axis, angle),
+            center: bound.centroid(),
+        }
+    }
+}
+
+impl Hittable for Rotated {
+    fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
+        // Transform the ray into object space
+        let dir = self.rot.conj().rotate_vec(ray.dir());
+        let origin = self.rot.conj().rotate_point(self.center, ray.origin());
+        let objray = Ray::new(origin, dir, ray.time());
+        self.hittable.hit(&objray, interval).map(|h| {
+            // Translate hit back into world space
+            let normal = self.rot.rotate_vec(h.normal);
+            Hit::new(ray, h.t, normal, h.material)
+        })
+    }
+}
+
+impl Bounded for Rotated {
+    fn bounding_box(&self) -> Aabb {
+        self.bound.clone()
+    }
+}
+
+pub fn make_box(a: Point3, b: Point3, material: Material) -> Group {
+    let min = a.min_pointwise(&b);
+    let max = a.max_pointwise(&b);
+
+    let dx = Vec3::new(max.x() - min.x(), 0.0, 0.0);
+    let dy = Vec3::new(0.0, max.y() - min.y(), 0.0);
+    let dz = Vec3::new(0.0, 0.0, max.z() - min.z());
+    let surfaces = vec![
+        // front
+        Quad::new(
+            Point3::new(min.x(), min.y(), max.z()),
+            dx,
+            dy,
+            material.clone(),
+        ),
+        // right
+        Quad::new(
+            Point3::new(max.x(), min.y(), max.z()),
+            dz.negate(),
+            dy,
+            material.clone(),
+        ),
+        // back
+        Quad::new(
+            Point3::new(max.x(), min.y(), min.z()),
+            dx.negate(),
+            dy,
+            material.clone(),
+        ),
+        // left
+        Quad::new(
+            Point3::new(min.x(), min.y(), min.z()),
+            dz,
+            dy,
+            material.clone(),
+        ),
+        // top
+        Quad::new(
+            Point3::new(min.x(), max.y(), max.z()),
+            dx,
+            dz.negate(),
+            material.clone(),
+        ),
+        // bottom
+        Quad::new(Point3::new(min.x(), min.y(), min.z()), dx, dz, material),
+    ];
+    Group::new(surfaces)
+}
+
+#[derive(Debug, Clone)]
+pub struct ConstantMedium {
+    boundary: Arc<Surface>,
+    neg_inv_density: f64,
+    phase_function: Material,
+}
+
+impl ConstantMedium {
+    pub fn new<S: Into<Surface>>(boundary: S, d: f64, albedo: Vec3) -> Self {
+        ConstantMedium {
+            boundary: Arc::new(boundary.into()),
+            neg_inv_density: -(1.0 / d),
+            phase_function: Material::isotropic(albedo),
+        }
+    }
+}
+
+impl Hittable for ConstantMedium {
+    fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
+        // Calculate where the ray would hit the boundary
+        let mut hit_in = match self.boundary.hit(ray, Interval::UNIVERSE) {
+            Some(h) => h,
+            None => return None,
+        };
+        let mut hit_out = match self
+            .boundary
+            .hit(ray, Interval(hit_in.t + 0.0001, f64::INFINITY))
+        {
+            Some(h) => h,
+            None => return None,
+        };
+
+        hit_in.t = hit_in.t.max(interval.0);
+        hit_out.t = hit_out.t.min(interval.1);
+
+        // The ray must hit the front before it hits the back
+        if hit_in.t >= hit_out.t {
+            return None;
+        }
+        hit_in.t = hit_in.t.max(0.0);
+        let ray_length = ray.dir().length();
+        let distance_inside_boundary = (hit_out.t - hit_in.t) * ray_length;
+
+        let mut rng = rand::thread_rng(); // FIXME
+        let hit_distance = self.neg_inv_density * rng.gen::<f64>().ln();
+
+        if hit_distance > distance_inside_boundary {
+            // the ray made it entirely through the volume
+            return None;
+        }
+        let t = hit_in.t + hit_distance / ray_length;
+        // FIXME: front_face was always just inferred from normal
+        // but in this case both the normal and face are arbitrary
+        let normal = Vec3::new(1.0, 0.0, 0.0);
+        let mut h = Hit::new(ray, t, normal, &self.phase_function);
+        h.front_face = true;
+        Some(h)
+    }
+}
+
+impl Bounded for ConstantMedium {
+    //     aabb bounding_box() const override { return boundary->bounding_box(); }
+    fn bounding_box(&self) -> Aabb {
+        self.boundary.bounding_box()
     }
 }
 

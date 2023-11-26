@@ -434,16 +434,8 @@ impl UnitQuaternion {
     }
 
     /// Rotate a point using this quaternion.
-    pub fn rotate_point(&self, direction: Point3) -> Point3 {
-        let lhs = UnitQuaternion {
-            x: direction.x(),
-            y: direction.y(),
-            z: direction.z(),
-            w: 0.0,
-        } * *self;
-        let out = self.conj() * lhs;
-
-        Point3::new(out.x, out.y, out.z)
+    pub fn rotate_point(&self, origin: Point3, p: Point3) -> Point3 {
+        origin + self.rotate_vec(p - origin)
     }
 
     #[cfg(test)]

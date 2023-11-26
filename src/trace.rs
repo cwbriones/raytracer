@@ -1,5 +1,6 @@
 use crate::geom::{
     Point3,
+    UnitQuaternion,
     Vec3,
 };
 use crate::material::Material;
@@ -88,7 +89,7 @@ impl<'m> Hit<'m> {
 }
 
 /// An axis-aligned bounding box.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Aabb {
     min: Point3,
     max: Point3,
@@ -160,12 +161,43 @@ impl Aabb {
     pub fn max(&self) -> &Point3 {
         &self.max
     }
+
+    pub fn translate(&self, offset: Vec3) -> Self {
+        let min = self.min + offset;
+        let max = self.max + offset;
+        Aabb { min, max }
+    }
+
+    pub fn rotate(&self, axis: Vec3, angle: f64) -> Self {
+        let delta = self.max - self.min;
+        let midpoint = self.min + 0.5 * delta;
+
+        // Iterate over all 8 points of the Aabb and rotate them about the midpoint.
+        // Then compute the new rotated min/max points.
+        let mut min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+        let mut max = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+        let rot = UnitQuaternion::rotation(axis, angle);
+        for ii in 0..8 {
+            let i = ii & 1;
+            let j = (ii >> 1) & 1;
+            let k = (ii >> 2) & 1;
+            let delta = Vec3::new(i as f64, j as f64, k as f64).mul_pointwise(&delta);
+
+            let rotated = rot.rotate_point(midpoint, self.min + delta);
+            min = min.min_pointwise(&rotated);
+            max = max.max_pointwise(&rotated);
+        }
+        Aabb { min, max }
+    }
 }
 
 #[derive(Clone, Copy)]
 pub struct Interval(pub f64, pub f64);
 
 impl Interval {
+    /// Universe is the largest possible interval.
+    pub const UNIVERSE: Interval = Interval(-f64::INFINITY, f64::INFINITY);
+
     #[inline(always)]
     pub fn contains(&self, t: f64) -> bool {
         self.0 <= t && t <= self.1

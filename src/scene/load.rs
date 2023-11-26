@@ -162,7 +162,7 @@ pub fn load_scene<P: AsRef<Path>>(
 fn transform_quad(
     quad: &surfaces::Quad,
     transforms: &[Transform],
-    mut origin: Vec3,
+    mut origin: Point3,
 ) -> surfaces::Quad {
     let mut q1 = quad.q;
     let mut q2 = quad.q + quad.u;
@@ -171,14 +171,14 @@ fn transform_quad(
         match *t {
             Transform::Scale { factor } => {
                 for v in [&mut q1, &mut q2, &mut q3] {
-                    *v = factor * (*v - origin) + origin;
+                    *v = origin + factor * (*v - origin);
                 }
             }
             Transform::Rotate { ref axis, angle } => {
                 let axis = axis.to_vec();
                 let rotation = UnitQuaternion::rotation(axis, angle.to_radians());
                 for v in [&mut q1, &mut q2, &mut q3] {
-                    *v = rotation.rotate_point(*v - origin) + origin;
+                    *v = rotation.rotate_point(origin, *v);
                 }
             }
             Transform::Translate { dir } => {
@@ -263,8 +263,9 @@ fn load_mesh<P: AsRef<Path>>(
 
     // Recompute the vertices relative to the model origin
     let mut mesh_origin = compute_mesh_center(&vertices);
+    let origin_vec = Vec3::from(mesh_origin);
     for v in vertices.iter_mut() {
-        *v = *v - mesh_origin;
+        *v = *v - origin_vec;
     }
     for t in transform {
         match *t {
@@ -278,7 +279,7 @@ fn load_mesh<P: AsRef<Path>>(
                 let axis = axis.to_vec();
                 let rotation = UnitQuaternion::rotation(axis, angle.to_radians());
                 for v in vertices.iter_mut() {
-                    *v = rotation.rotate_point(*v - mesh_origin) + mesh_origin;
+                    *v = rotation.rotate_point(mesh_origin, *v);
                 }
             }
             Transform::Translate { dir } => {
@@ -328,7 +329,7 @@ fn reader_at<P: AsRef<Path>>(path: P) -> Result<Box<dyn BufRead>, io::Error> {
 /// NOTE: This origin is computed by using the center of the bounding box.
 /// Alternatively, we could find the center-of-mass by taking the weighted
 /// average of each face's center.
-fn compute_mesh_center<'a, I: IntoIterator<Item = &'a Point3>>(vertices: I) -> Vec3 {
+fn compute_mesh_center<'a, I: IntoIterator<Item = &'a Point3>>(vertices: I) -> Point3 {
     let mut min_v = Point3::new(
         ::std::f64::INFINITY,
         ::std::f64::INFINITY,
@@ -339,7 +340,7 @@ fn compute_mesh_center<'a, I: IntoIterator<Item = &'a Point3>>(vertices: I) -> V
         max_v = max_v.max_pointwise(v);
         min_v = min_v.min_pointwise(v);
     }
-    (min_v + 0.5 * (max_v - min_v)).into()
+    min_v + 0.5 * (max_v - min_v)
 }
 
 #[derive(Deserialize, Debug)]
@@ -411,7 +412,7 @@ enum Transform {
     Scale { factor: f64 },
     Rotate { axis: RotationAxis, angle: f64 },
     Translate { dir: Vec3 },
-    TranslateTo { dest: Vec3 },
+    TranslateTo { dest: Point3 },
 }
 
 #[derive(Deserialize, Debug)]

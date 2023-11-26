@@ -48,6 +48,13 @@ impl Material {
         }
     }
 
+    pub fn isotropic(albedo: Vec3) -> Self {
+        Material {
+            texture: Texture::SolidColor(albedo),
+            kind: MaterialKind::Isotropic,
+        }
+    }
+
     #[inline(always)]
     pub fn scatter<R: Rng>(&self, ray: &Ray, hit: &Hit, rng: &mut R) -> Option<(Vec3, Ray)> {
         self.kind.scatter(ray, hit, rng).map(|r| {
@@ -68,6 +75,7 @@ impl Material {
 #[derive(Debug, Clone)]
 enum MaterialKind {
     Lambertian,
+    Isotropic,
     Metal(f64),
     Dielectric(f64),
     DiffuseLight,
@@ -78,6 +86,7 @@ impl MaterialKind {
     fn scatter<R: Rng>(&self, ray: &Ray, hit: &Hit, rng: &mut R) -> Option<Ray> {
         match *self {
             Self::Lambertian => Some(lambertian_scatter(ray, hit, rng)),
+            Self::Isotropic => Some(isotropic_scatter(ray, hit, rng)),
             Self::Metal(fuzz) => metallic_scatter(fuzz, ray, hit, rng),
             Self::Dielectric(refractive_index) => {
                 Some(dielectric_scatter(refractive_index, ray, hit, rng))
@@ -106,6 +115,11 @@ fn lambertian_scatter<R: Rng>(ray: &Ray, hit: &Hit, rng: &mut R) -> Ray {
     }
 
     Ray::new(hit.point, scatter_direction, ray.time())
+}
+
+fn isotropic_scatter<R: Rng>(ray: &Ray, hit: &Hit, rng: &mut R) -> Ray {
+    let dir = rng.gen_in_unit_sphere();
+    Ray::new(hit.point, dir, ray.time())
 }
 
 #[inline(always)]

@@ -1,5 +1,6 @@
 /// Example scenes as shown in the Ray Tracing in One Weeked series.
 use std::str::FromStr;
+use std::sync::Arc;
 
 use rand::distributions::Uniform;
 use rand::Rng;
@@ -12,6 +13,7 @@ use crate::geom::{
 };
 use crate::material::{
     Material,
+    PerlinNoise,
     Texture,
 };
 use crate::surfaces::Sphere;
@@ -20,6 +22,7 @@ use crate::surfaces::Sphere;
 pub enum Example {
     OneWeekend,
     TwoSpheres,
+    TwoPerlinSpheres,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -38,8 +41,9 @@ impl FromStr for Example {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "one_weekend" => Ok(Example::OneWeekend),
-            "two_spheres" => Ok(Example::TwoSpheres),
+            "one-weekend" => Ok(Example::OneWeekend),
+            "two-spheres" => Ok(Example::TwoSpheres),
+            "two-perlin" => Ok(Example::TwoPerlinSpheres),
             _ => Err(InvalidExample),
         }
     }
@@ -50,6 +54,7 @@ impl Example {
         match self {
             Example::OneWeekend => one_weekend(aspect_ratio),
             Example::TwoSpheres => two_spheres(aspect_ratio),
+            Example::TwoPerlinSpheres => two_perlin_spheres(aspect_ratio),
         }
     }
 }
@@ -141,6 +146,32 @@ fn two_spheres(aspect_ratio: f64) -> (Scene, Camera) {
         Point3::new(0.0, 10.0, 0.0),
         10.0,
         checker,
+    ));
+
+    (world.build(), camera)
+}
+
+fn two_perlin_spheres(aspect_ratio: f64) -> (Scene, Camera) {
+    let camera = Camera::builder(20.0, aspect_ratio)
+        .from((13.0, 2.0, 3.0))
+        .towards((0.0, 0.0, 0.0))
+        .build();
+
+    let mut rng = rand::thread_rng();
+    let noise = Arc::new(PerlinNoise::new(&mut rng));
+    let perlin = Texture::noise(4.0, noise);
+
+    let mut world = Scene::builder();
+    world.set_background(Vec3::new(0.7, 0.8, 1.0));
+    world.add(Sphere::stationary(
+        Point3::new(0.0, -1000.0, 0.0),
+        1000.0,
+        Material::lambertian(perlin.clone()),
+    ));
+    world.add(Sphere::stationary(
+        Point3::new(0.0, 2.0, 0.0),
+        2.0,
+        Material::lambertian(perlin),
     ));
 
     (world.build(), camera)

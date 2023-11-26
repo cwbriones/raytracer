@@ -42,6 +42,14 @@ impl Point3 {
         )
     }
 
+    // Returns this point scaled by a constant factor.
+    //
+    // This is a method instead of ops::Add to avoid
+    // misinterpreting a point variable as a Vec3.
+    pub fn scaled(&self, c: f64) -> Self {
+        Point3(c * self.0, c * self.1, c * self.2)
+    }
+
     #[inline]
     pub fn x(&self) -> f64 {
         self.0

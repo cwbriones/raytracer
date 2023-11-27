@@ -138,22 +138,25 @@ fn main() -> anyhow::Result<()> {
         rayon::spawn(move || progress.run(samples_per_pixel));
     }
 
-    buf.par_chunks_mut(3).enumerate().for_each(|(idx, pixel)| {
-        let i = idx % image_width;
-        let j = image_height - idx / image_width - 1;
+    buf.par_chunks_mut(3)
+        .enumerate()
+        .panic_fuse()
+        .for_each(|(idx, pixel)| {
+            let i = idx % image_width;
+            let j = image_height - idx / image_width - 1;
 
-        let mut rng = small_rng(config.seed);
-        let color_vec = average(samples_per_pixel, || {
-            let u = (i as f64 + rng.gen::<f64>()) / (image_width - 1) as f64;
-            let v = (j as f64 + rng.gen::<f64>()) / (image_height - 1) as f64;
-            let ray = camera.get_ray(&mut rng, u, v);
-            scene.ray_color(ray, &mut rng, max_depth)
+            let mut rng = small_rng(config.seed);
+            let color_vec = average(samples_per_pixel, || {
+                let u = (i as f64 + rng.gen::<f64>()) / (image_width - 1) as f64;
+                let v = (j as f64 + rng.gen::<f64>()) / (image_height - 1) as f64;
+                let ray = camera.get_ray(&mut rng, u, v);
+                scene.ray_color(ray, &mut rng, max_depth)
+            });
+            pixel[0] = (256. * (color_vec.x()).sqrt().clamp(0.0, 0.99)) as u8;
+            pixel[1] = (256. * (color_vec.y()).sqrt().clamp(0.0, 0.99)) as u8;
+            pixel[2] = (256. * (color_vec.z()).sqrt().clamp(0.0, 0.99)) as u8;
+            recorder.record();
         });
-        pixel[0] = (256. * (color_vec.x()).sqrt().clamp(0.0, 0.99)) as u8;
-        pixel[1] = (256. * (color_vec.y()).sqrt().clamp(0.0, 0.99)) as u8;
-        pixel[2] = (256. * (color_vec.z()).sqrt().clamp(0.0, 0.99)) as u8;
-        recorder.record();
-    });
 
     let elapsed_sec = start.elapsed().as_secs_f64();
     let rays_per_sec = (rays as f64) / elapsed_sec;

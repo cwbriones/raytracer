@@ -524,10 +524,12 @@ impl Hittable for Translated {
     fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
         // Transform the ray into object space
         let objray = Ray::new(ray.origin() - self.offset, ray.dir(), ray.time());
-        self.hittable.hit(&objray, interval).map(|h| {
-            // Translate hit back into world space by replacing ray
-            Hit::new(ray, h.t, h.normal, h.material)
-        })
+        let mut hit = self.hittable.hit(&objray, interval);
+
+        if let Some(ref mut h) = hit {
+            h.point = ray.at(ray.time());
+        }
+        hit
     }
 }
 
@@ -564,11 +566,13 @@ impl Hittable for Rotated {
         let dir = self.rot.conj().rotate_vec(ray.dir());
         let origin = self.rot.conj().rotate_point(self.center, ray.origin());
         let objray = Ray::new(origin, dir, ray.time());
-        self.hittable.hit(&objray, interval).map(|h| {
-            // Translate hit back into world space
-            let normal = self.rot.rotate_vec(h.normal);
-            Hit::new(ray, h.t, normal, h.material)
-        })
+
+        let mut hit = self.hittable.hit(&objray, interval);
+        if let Some(ref mut h) = hit {
+            h.point = self.rot.rotate_point(self.center, h.point);
+            h.normal = self.rot.rotate_vec(h.normal);
+        }
+        hit
     }
 }
 

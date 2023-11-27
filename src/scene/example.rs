@@ -30,6 +30,7 @@ pub enum Example {
     TwoSpheres,
     TwoPerlinSpheres,
     CornellSmoke,
+    Earth,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -53,6 +54,7 @@ impl FromStr for Example {
             "two-spheres" => Ok(Example::TwoSpheres),
             "two-perlin" => Ok(Example::TwoPerlinSpheres),
             "cornell-smoke" => Ok(Example::CornellSmoke),
+            "earth" => Ok(Example::Earth),
             _ => Err(InvalidExample),
         }
     }
@@ -66,6 +68,7 @@ impl Example {
             Example::TwoSpheres => two_spheres(aspect_ratio),
             Example::TwoPerlinSpheres => two_perlin_spheres(aspect_ratio),
             Example::CornellSmoke => cornell_smoke(aspect_ratio),
+            Example::Earth => earth(aspect_ratio),
         }
     }
 }
@@ -203,20 +206,20 @@ fn two_spheres(aspect_ratio: f64) -> (Scene, Camera) {
         Vec3::new(0.9, 0.9, 0.9),
     ));
 
-    let mut world = Scene::builder();
-    world.set_background(Vec3::new(0.7, 0.8, 1.0));
-    world.add(Sphere::stationary(
+    let mut earth = Scene::builder();
+    earth.set_background(Vec3::new(0.7, 0.8, 1.0));
+    earth.add(Sphere::stationary(
         Point3::new(0.0, -10.0, 0.0),
         10.0,
         checker.clone(),
     ));
-    world.add(Sphere::stationary(
+    earth.add(Sphere::stationary(
         Point3::new(0.0, 10.0, 0.0),
         10.0,
         checker,
     ));
 
-    (world.build(), camera)
+    (earth.build(), camera)
 }
 
 fn two_perlin_spheres(aspect_ratio: f64) -> (Scene, Camera) {
@@ -229,20 +232,20 @@ fn two_perlin_spheres(aspect_ratio: f64) -> (Scene, Camera) {
     let noise = Arc::new(PerlinNoise::new(&mut rng));
     let perlin = Texture::noise(4.0, noise);
 
-    let mut world = Scene::builder();
-    world.set_background(Vec3::new(0.7, 0.8, 1.0));
-    world.add(Sphere::stationary(
+    let mut earth = Scene::builder();
+    earth.set_background(Vec3::new(0.7, 0.8, 1.0));
+    earth.add(Sphere::stationary(
         Point3::new(0.0, -1000.0, 0.0),
         1000.0,
         Material::lambertian(perlin.clone()),
     ));
-    world.add(Sphere::stationary(
+    earth.add(Sphere::stationary(
         Point3::new(0.0, 2.0, 0.0),
         2.0,
         Material::lambertian(perlin),
     ));
 
-    (world.build(), camera)
+    (earth.build(), camera)
 }
 
 fn cornell_smoke(aspect_ratio: f64) -> (Scene, Camera) {
@@ -317,4 +320,61 @@ fn cornell_smoke(aspect_ratio: f64) -> (Scene, Camera) {
     scene.add(box2);
 
     (scene.build(), camera)
+}
+
+fn earth(aspect_ratio: f64) -> (Scene, Camera) {
+    let camera = Camera::builder(20.0, aspect_ratio)
+        .from((0.0, 0.0, 12.0))
+        .towards((0.0, 0.0, 0.0))
+        .build();
+
+    let mut scene = Scene::builder();
+    scene.set_background(Vec3::new(0.7, 0.8, 1.0));
+
+    let texture = match read_image_data("./scenes/res/earth.png") {
+        Ok((image, width, height)) => Texture::image(image.into(), width, height),
+        Err(e) => {
+            eprintln!("could not load earth texture: {}", e);
+            Vec3::new(0.0, 1.0, 1.0).into()
+        }
+    };
+    let material = Material::lambertian(texture);
+    let globe = Rotated::new(
+        Rotated::new(
+            Sphere::stationary(Point3::new(0.0, 0.0, 0.0), 2.0, material),
+            Vec3::jhat(),
+            (-80.0f64).to_radians(),
+        ),
+        Vec3::ihat(),
+        (15.0f64).to_radians(),
+    );
+    scene.add(globe);
+
+    (scene.build(), camera)
+}
+
+fn read_image_data(path: &str) -> Result<(Vec<u8>, usize, usize), anyhow::Error> {
+    use std::fs::File;
+
+    use anyhow::anyhow;
+    use png::ColorType::*;
+
+    let mut decoder = png::Decoder::new(File::open(path)?);
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = decoder.read_info()?;
+    let mut img_data = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut img_data)?;
+
+    let img_data = match info.color_type {
+        Rgb => img_data,
+        Rgba => {
+            // convert RGBA -> RGB by discarding the alpha channel
+            let mut vec = Vec::with_capacity((img_data.len() / 4) * 3);
+            let iter = img_data.chunks(4).flat_map(|p| &p[..3]).cloned();
+            vec.extend(iter);
+            vec
+        }
+        t => return Err(anyhow!("uncovered color type: {:?}", t)),
+    };
+    Ok((img_data, info.width as usize, info.height as usize))
 }

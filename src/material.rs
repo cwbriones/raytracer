@@ -186,6 +186,7 @@ pub enum Texture {
     Checker(Checker),
     UVChecker(UVChecker),
     Perlin(NoiseTexture),
+    Image(Image),
 }
 
 impl Texture {
@@ -205,12 +206,17 @@ impl Texture {
         Texture::Perlin(NoiseTexture::new(scale, noise))
     }
 
+    pub fn image(buf: Arc<[u8]>, width: usize, height: usize) -> Self {
+        Texture::Image(Image { buf, height, width })
+    }
+
     pub fn color_at(&self, u: f64, v: f64, point: &Point3) -> Vec3 {
         match self {
             Texture::SolidColor(c) => *c,
             Texture::Checker(texture) => texture.color_at(point),
             Texture::UVChecker(texture) => texture.color_at(u, v),
             Texture::Perlin(texture) => texture.marbled(point),
+            Texture::Image(texture) => texture.color_at(u, v),
         }
     }
 }
@@ -381,5 +387,38 @@ impl PerlinNoise {
         let mut perm = (0usize..Self::POINT_COUNT).collect::<Vec<_>>();
         perm.shuffle(rng);
         perm
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Image {
+    buf: Arc<[u8]>,
+    width: usize,
+    height: usize,
+}
+
+impl Image {
+    fn color_at(&self, mut u: f64, mut v: f64) -> Vec3 {
+        u = u.clamp(0.0, 1.0);
+        v = 1.0 - v.clamp(0.0, 1.0);
+
+        if self.buf.is_empty() {
+            return Vec3::new(0.0, 1.0, 1.0);
+        }
+        u = u.clamp(0.0, 1.0);
+        v = v.clamp(0.0, 1.0);
+
+        let i = (u * (self.width - 1) as f64) as usize;
+        let j = (v * (self.height - 1) as f64) as usize;
+
+        let idx = 3 * (j * self.width + i);
+        let pixel = &self.buf[idx..idx + 3];
+
+        let color_scale = 1.0 / 255.0;
+        Vec3::new(
+            color_scale * pixel[0] as f64,
+            color_scale * pixel[1] as f64,
+            color_scale * pixel[2] as f64,
+        )
     }
 }

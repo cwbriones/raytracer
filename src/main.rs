@@ -1,5 +1,4 @@
 #![allow(clippy::suspicious_operation_groupings)]
-mod bvh;
 mod camera;
 mod geom;
 mod material;
@@ -117,7 +116,7 @@ fn main() -> anyhow::Result<()> {
     let image_height = config.height();
     let samples_per_pixel: usize = config.num_samples;
     let rays = image_width * image_height * samples_per_pixel;
-    let max_depth = 50;
+    let max_depth = 40;
 
     let start = Instant::now();
 
@@ -152,9 +151,9 @@ fn main() -> anyhow::Result<()> {
                 let ray = camera.get_ray(&mut rng, u, v);
                 scene.ray_color(ray, &mut rng, max_depth)
             });
-            pixel[0] = (256. * (color_vec.x()).sqrt().clamp(0.0, 0.99)) as u8;
-            pixel[1] = (256. * (color_vec.y()).sqrt().clamp(0.0, 0.99)) as u8;
-            pixel[2] = (256. * (color_vec.z()).sqrt().clamp(0.0, 0.99)) as u8;
+            pixel[0] = (256. * (color_vec.x()).sqrt().clamp(0.0, 0.999)) as u8;
+            pixel[1] = (256. * (color_vec.y()).sqrt().clamp(0.0, 0.999)) as u8;
+            pixel[2] = (256. * (color_vec.z()).sqrt().clamp(0.0, 0.999)) as u8;
             recorder.record();
         });
 

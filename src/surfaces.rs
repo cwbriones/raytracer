@@ -1,6 +1,8 @@
 use std::f64::consts::PI;
 use std::sync::Arc;
 
+pub use bvh::Bvh;
+pub use bvh::BvhBuilder;
 use rand::Rng;
 
 use crate::geom::{
@@ -17,6 +19,8 @@ use crate::trace::{
     Interval,
     Ray,
 };
+
+mod bvh;
 
 #[derive(Debug, Clone)]
 pub struct Sphere {
@@ -364,10 +368,10 @@ pub enum Surface {
     Sphere(Sphere),
     Triangle(Triangle),
     Quad(Quad),
-    Group(Group),
     Rotated(Rotated),
     Translated(Translated),
     ConstantMedium(ConstantMedium),
+    Bvh(Bvh),
 }
 
 impl Hittable for Surface {
@@ -376,10 +380,10 @@ impl Hittable for Surface {
             Self::Sphere(ref sphere) => sphere.hit(ray, interval),
             Self::Triangle(ref triangle) => triangle.hit(ray, interval),
             Self::Quad(ref quad) => quad.hit(ray, interval),
-            Self::Group(ref g) => g.hit(ray, interval),
             Self::Translated(ref t) => t.hit(ray, interval),
             Self::Rotated(ref r) => r.hit(ray, interval),
             Self::ConstantMedium(ref r) => r.hit(ray, interval),
+            Self::Bvh(ref bvh) => bvh.hit(ray, interval),
         }
     }
 }
@@ -404,10 +408,10 @@ impl Bounded for Surface {
             Self::Sphere(ref sphere) => sphere.bounding_box(),
             Self::Triangle(ref triangle) => triangle.bounding_box(),
             Self::Quad(ref quad) => quad.bounding_box(),
-            Self::Group(ref g) => g.bounding_box(),
             Self::Translated(ref t) => t.bounding_box(),
             Self::Rotated(ref r) => r.bounding_box(),
             Self::ConstantMedium(ref c) => c.bounding_box(),
+            Self::Bvh(ref bvh) => bvh.bounding_box(),
         }
     }
 }
@@ -430,12 +434,6 @@ impl From<Quad> for Surface {
     }
 }
 
-impl From<Group> for Surface {
-    fn from(value: Group) -> Self {
-        Surface::Group(value)
-    }
-}
-
 impl From<Translated> for Surface {
     fn from(value: Translated) -> Self {
         Surface::Translated(value)
@@ -454,50 +452,9 @@ impl From<ConstantMedium> for Surface {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Group {
-    hittables: Arc<[Surface]>,
-    bound: Aabb,
-}
-
-impl Group {
-    pub fn new<S: Into<Surface>>(hittables: Vec<S>) -> Self {
-        let mut surfaces: Vec<Surface> = Vec::with_capacity(hittables.len());
-        for s in hittables {
-            surfaces.push(s.into());
-        }
-        let mut bound = surfaces[0].bounding_box();
-        for obj in &surfaces[1..] {
-            bound = bound.merge(&obj.bounding_box());
-        }
-        Self {
-            hittables: surfaces.into(),
-            bound,
-        }
-    }
-}
-
-impl Hittable for Group {
-    fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
-        if !self.bound.hit(ray, interval) {
-            return None;
-        }
-        let Interval(t_min, t_max) = interval;
-        let mut closest = t_max;
-        let mut closest_hit = None;
-        for o in &self.hittables[..] {
-            if let Some(hit) = o.hit(ray, Interval(t_min, closest)) {
-                closest = hit.t;
-                closest_hit = Some(hit);
-            }
-        }
-        closest_hit
-    }
-}
-
-impl Bounded for Group {
-    fn bounding_box(&self) -> Aabb {
-        self.bound.clone()
+impl From<Bvh> for Surface {
+    fn from(value: Bvh) -> Self {
+        Surface::Bvh(value)
     }
 }
 
@@ -527,7 +484,7 @@ impl Hittable for Translated {
         let mut hit = self.hittable.hit(&objray, interval);
 
         if let Some(ref mut h) = hit {
-            h.point = ray.at(ray.time());
+            h.point += self.offset;
         }
         hit
     }
@@ -582,7 +539,7 @@ impl Bounded for Rotated {
     }
 }
 
-pub fn make_box(a: Point3, b: Point3, material: Material) -> Group {
+pub fn make_box(a: Point3, b: Point3, material: Material) -> Bvh {
     let min = a.min_pointwise(&b);
     let max = a.max_pointwise(&b);
 
@@ -627,8 +584,11 @@ pub fn make_box(a: Point3, b: Point3, material: Material) -> Group {
         ),
         // bottom
         Quad::new(Point3::new(min.x(), min.y(), min.z()), dx, dz, material),
-    ];
-    Group::new(surfaces)
+    ]
+    .into_iter()
+    .map(Into::into)
+    .collect::<Vec<_>>();
+    Bvh::new_leaf(surfaces)
 }
 
 #[derive(Debug, Clone)]

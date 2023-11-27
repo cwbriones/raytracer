@@ -1,10 +1,10 @@
 use std::cell::RefCell;
-use std::sync::Arc;
 
 use rand::Rng;
 
-use crate::bvh::Bvh;
 use crate::geom::Vec3;
+use crate::surfaces::Bvh;
+use crate::surfaces::BvhBuilder;
 use crate::surfaces::Surface;
 use crate::trace::Hittable;
 use crate::trace::Interval;
@@ -17,7 +17,7 @@ pub use load::load_scene;
 
 #[derive(Clone)]
 pub struct Scene {
-    root: Arc<dyn Hittable + Send + Sync>,
+    root: Surface,
     background: Vec3,
 }
 
@@ -28,7 +28,7 @@ impl Scene {
 }
 
 pub struct SceneBuilder {
-    surfaces: Vec<Surface>,
+    surfaces: BvhBuilder,
     background: Vec3,
     use_bvh: bool,
 }
@@ -36,7 +36,7 @@ pub struct SceneBuilder {
 impl SceneBuilder {
     fn new() -> Self {
         SceneBuilder {
-            surfaces: Vec::new(),
+            surfaces: Bvh::builder(),
             background: Vec3::default(),
             use_bvh: true,
         }
@@ -46,7 +46,7 @@ impl SceneBuilder {
     where
         S: Into<Surface>,
     {
-        self.surfaces.push(surface.into());
+        self.surfaces.add(surface);
     }
 
     pub fn set_background(&mut self, background: Vec3) {
@@ -57,12 +57,13 @@ impl SceneBuilder {
         self.use_bvh = use_bvh;
     }
 
-    pub fn build(mut self) -> Scene {
-        let root: Arc<dyn Hittable + Send + Sync> = if self.use_bvh {
-            Arc::new(Bvh::new(&mut self.surfaces))
+    pub fn build(self) -> Scene {
+        let root = if self.use_bvh {
+            self.surfaces.build()
         } else {
-            Arc::new(self.surfaces)
-        };
+            self.surfaces.build_leaf()
+        }
+        .into();
         Scene {
             root,
             background: self.background,

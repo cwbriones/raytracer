@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use super::Surface;
+use crate::geom::Point3;
 use crate::trace::{
     Aabb,
     Bounded,
@@ -15,6 +17,11 @@ const INTERSECT_COST: f64 = 1.0;
 /// The cost of traversing from a parent to child node in the tree.
 const TRAVERSAL_COST: f64 = 2.0;
 
+// The maximum number of surfaces within a single leaf when built automatically.
+//
+// It is still possible to create leaves with more elements manually.
+const MAX_LEAF_SIZE: usize = 8;
+
 /// A bounded volume hiearchy (BVH).
 ///
 /// A BVH is a tracing acceleration structure which seeks to minimize
@@ -29,18 +36,15 @@ const TRAVERSAL_COST: f64 = 2.0;
 /// subsequent intersections that could occur, we can determine whether or not to split at a given
 /// level by comparing costs of all possible splits in addition to the option of not splitting at
 /// all.
-#[derive(Clone)]
-pub struct Bvh<S> {
-    root: BVHNode<S>,
+#[derive(Debug, Clone)]
+pub struct Bvh {
+    root: BVHNode,
 }
 
-impl<S> Bvh<S>
-where
-    S: Hittable + Bounded + Clone,
-{
+impl Bvh {
     /// Construct a BVH using the Surface-Area-Heuristic.
     #[allow(unused)]
-    pub fn new(surfaces: &mut [S]) -> Self {
+    pub fn new(surfaces: Vec<Surface>) -> Self {
         Bvh {
             root: BVHNode::new_with_strategy(surfaces, &mut SAHSplitStrategy),
         }
@@ -48,40 +52,75 @@ where
 
     /// Construct a BVH by dividing each level evenly each time.
     #[allow(unused)]
-    pub fn new_naive(surfaces: &mut [S]) -> Self {
+    pub fn new_naive(surfaces: Vec<Surface>) -> Self {
         Bvh {
             root: BVHNode::new_with_strategy(surfaces, &mut EqualSplitStrategy),
         }
     }
+
+    /// Construct a BVH that consists of a single leaf node.
+    #[allow(unused)]
+    pub fn new_leaf(surfaces: Vec<Surface>) -> Self {
+        let surfaces = surfaces.to_vec();
+        Bvh {
+            root: BVHNode::Leaf(BVHLeafNode::new(surfaces)),
+        }
+    }
+
+    pub fn builder() -> BvhBuilder {
+        BvhBuilder {
+            surfaces: Vec::new(),
+        }
+    }
 }
 
-impl<S> Hittable for Bvh<S>
-where
-    S: Hittable + Bounded,
-{
+/// BvhBuilder is a convenience struct that handles conversion to surfaces when
+/// you do not already have a Vec<Surface> allocated.
+pub struct BvhBuilder {
+    surfaces: Vec<Surface>,
+}
+
+impl BvhBuilder {
+    pub fn add<S: Into<Surface>>(&mut self, surface: S) {
+        self.surfaces.push(surface.into());
+    }
+
+    pub fn build(self) -> Bvh {
+        Bvh::new(self.surfaces)
+    }
+
+    pub fn build_leaf(self) -> Bvh {
+        Bvh::new_leaf(self.surfaces)
+    }
+}
+
+impl Hittable for Bvh {
     fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
         self.root.hit(ray, interval)
     }
 }
 
+impl Bounded for Bvh {
+    fn bounding_box(&self) -> Aabb {
+        self.root.bounding_box().clone()
+    }
+}
+
 /// A strategy for constructing a BVH.
-trait SplitStrategy<S> {
+trait SplitStrategy {
     /// Choose the partitioning index. This is the index of the first surface
     /// that will be placed in the right child.
     ///
     /// If `None` is returned, then a leaf node containing these surfaces
     /// will be constructed.
-    fn split_at(&mut self, surfaces: &[S]) -> Option<usize>;
+    fn split_at(&mut self, surfaces: &[Surface]) -> Option<usize>;
 }
 
 /// Split each level of the tree equally into two parts.
 struct EqualSplitStrategy;
 
-impl<S> SplitStrategy<S> for EqualSplitStrategy
-where
-    S: Bounded,
-{
-    fn split_at(&mut self, surfaces: &[S]) -> Option<usize> {
+impl SplitStrategy for EqualSplitStrategy {
+    fn split_at(&mut self, surfaces: &[Surface]) -> Option<usize> {
         Some(surfaces.len() / 2)
     }
 }
@@ -89,11 +128,8 @@ where
 /// Split each level of the tree using the surface area heuristic.
 struct SAHSplitStrategy;
 
-impl<S> SplitStrategy<S> for SAHSplitStrategy
-where
-    S: Bounded,
-{
-    fn split_at(&mut self, surfaces: &[S]) -> Option<usize> {
+impl SplitStrategy for SAHSplitStrategy {
+    fn split_at(&mut self, surfaces: &[Surface]) -> Option<usize> {
         // Accumulate boxes from left to right.
         let mut merge_left = Vec::with_capacity(surfaces.len());
         merge_left.push(surfaces[0].bounding_box());
@@ -137,43 +173,40 @@ where
     }
 }
 
-#[derive(Clone)]
-enum BVHNode<S> {
-    Inner(BVHInnerNode<S>),
-    Leaf(BVHLeafNode<S>),
+#[derive(Debug, Clone)]
+enum BVHNode {
+    Inner(BVHInnerNode),
+    Leaf(BVHLeafNode),
 }
 
-impl<S> BVHNode<S>
-where
-    S: Hittable + Bounded + Clone,
-{
-    fn new_with_strategy<T>(surfaces: &mut [S], strategy: &mut T) -> Self
+impl BVHNode {
+    fn new_with_strategy<T>(mut surfaces: Vec<Surface>, strategy: &mut T) -> Self
     where
-        T: SplitStrategy<S>,
+        T: SplitStrategy,
     {
+        if surfaces.len() <= MAX_LEAF_SIZE {
+            return BVHNode::Leaf(BVHLeafNode::new(surfaces.to_vec()));
+        }
         // Choose the axis that has the widest span of centroids.
         //
         // This is the distance between the rightmost and leftmost
         // bounding boxes on a given axis.
-        let (axis, _) = (0usize..3)
-            .map(|i| {
-                let mut min = f64::INFINITY;
-                let mut max = 0.0;
-                for surface in surfaces.iter() {
-                    let p = surface.bounding_box().centroid().get(i);
-                    if p < min {
-                        min = p;
-                    }
-                    if p > max {
-                        max = p;
-                    }
-                }
-                (i, max - min)
-            })
-            .max_by(|(_, spana), (_, spanb)| spana.partial_cmp(spanb).expect("not NaN"))
-            .unwrap();
-
-        let comparator = |a: &S, b: &S| {
+        let mut mins = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+        let mut maxs = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for surface in surfaces.iter() {
+            let centroid = surface.bounding_box().centroid();
+            mins = mins.min_pointwise(&centroid);
+            maxs = maxs.max_pointwise(&centroid);
+        }
+        let span = maxs - mins;
+        let mut axis = 0;
+        if span.get(axis) < span.get(1) {
+            axis = 1
+        }
+        if span.get(axis) < span.get(2) {
+            axis = 2
+        }
+        let comparator = |a: &Surface, b: &Surface| {
             let bba = a.bounding_box();
             let bbb = b.bounding_box();
             bba.min()
@@ -181,15 +214,13 @@ where
                 .partial_cmp(&bbb.min().get(axis))
                 .unwrap()
         };
-        let min_split_len = 8;
-        if surfaces.len() <= min_split_len {
-            return BVHNode::Leaf(BVHLeafNode::new(surfaces.to_vec()));
-        }
-        // Subdivide.
+        // Subdivide along this axis.
         surfaces.sort_by(comparator);
-        if let Some(idx) = strategy.split_at(surfaces) {
-            let left = Arc::new(BVHNode::new_with_strategy(&mut surfaces[..idx], strategy));
-            let right = Arc::new(BVHNode::new_with_strategy(&mut surfaces[idx..], strategy));
+        if let Some(idx) = strategy.split_at(&surfaces) {
+            let right = surfaces.split_off(idx);
+
+            let left = Arc::new(BVHNode::new_with_strategy(surfaces, strategy));
+            let right = Arc::new(BVHNode::new_with_strategy(right, strategy));
             let box_left = left.bounding_box();
             let box_right = right.bounding_box();
             let bound = box_left.merge(box_right);
@@ -203,10 +234,7 @@ where
     }
 }
 
-impl<S> BVHNode<S>
-where
-    S: Hittable + Bounded,
-{
+impl BVHNode {
     fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
         match *self {
             Self::Inner(ref inner) => inner.hit(ray, interval),
@@ -217,22 +245,19 @@ where
     fn bounding_box(&self) -> &Aabb {
         match *self {
             Self::Inner(ref inner) => inner.bounding_box(),
-            Self::Leaf(ref leaf) => leaf.bounding_box(),
+            Self::Leaf(ref leaf) => &leaf.bound,
         }
     }
 }
 
-#[derive(Clone)]
-struct BVHInnerNode<S> {
-    left: Option<Arc<BVHNode<S>>>,
-    right: Option<Arc<BVHNode<S>>>,
+#[derive(Debug, Clone)]
+struct BVHInnerNode {
+    left: Option<Arc<BVHNode>>,
+    right: Option<Arc<BVHNode>>,
     bound: Aabb,
 }
 
-impl<S> BVHInnerNode<S>
-where
-    S: Hittable + Bounded,
-{
+impl BVHInnerNode {
     #[inline(always)]
     fn hit(&self, ray: &Ray, interval: Interval) -> Option<Hit> {
         if !self.bound.hit(ray, interval) {
@@ -254,17 +279,14 @@ where
     }
 }
 
-#[derive(Clone)]
-struct BVHLeafNode<S> {
-    surfaces: Arc<[S]>,
+#[derive(Debug, Clone)]
+struct BVHLeafNode {
+    surfaces: Arc<[Surface]>,
     bound: Aabb,
 }
 
-impl<S> BVHLeafNode<S>
-where
-    S: Hittable + Bounded,
-{
-    fn new(surfaces: Vec<S>) -> Self {
+impl BVHLeafNode {
+    fn new(surfaces: Vec<Surface>) -> Self {
         let mut bound = surfaces[0].bounding_box();
         for obj in &surfaces[1..] {
             bound = bound.merge(&obj.bounding_box());
@@ -289,9 +311,5 @@ where
             }
         }
         closest_hit
-    }
-
-    fn bounding_box(&self) -> &Aabb {
-        &self.bound
     }
 }

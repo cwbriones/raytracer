@@ -17,6 +17,7 @@ use crate::material::{
     Texture,
 };
 use crate::surfaces::make_box;
+use crate::surfaces::Bvh;
 use crate::surfaces::ConstantMedium;
 use crate::surfaces::Quad;
 use crate::surfaces::Rotated;
@@ -31,6 +32,7 @@ pub enum Example {
     TwoPerlinSpheres,
     CornellSmoke,
     Earth,
+    FinalScene,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -55,6 +57,7 @@ impl FromStr for Example {
             "two-perlin" => Ok(Example::TwoPerlinSpheres),
             "cornell-smoke" => Ok(Example::CornellSmoke),
             "earth" => Ok(Example::Earth),
+            "final-scene" => Ok(Example::FinalScene),
             _ => Err(InvalidExample),
         }
     }
@@ -69,6 +72,7 @@ impl Example {
             Example::TwoPerlinSpheres => two_perlin_spheres(aspect_ratio),
             Example::CornellSmoke => cornell_smoke(aspect_ratio),
             Example::Earth => earth(aspect_ratio),
+            Example::FinalScene => final_scene(aspect_ratio),
         }
     }
 }
@@ -83,11 +87,13 @@ fn one_weekend(aspect_ratio: f64) -> (Scene, Camera) {
         .build();
 
     let mut rng = rand::thread_rng();
-    let mut objects = Scene::builder();
-    objects.set_background(Vec3::new(0.7, 0.8, 1.0));
+    let mut scene = Scene::builder();
+    scene.set_background(Vec3::new(0.7, 0.8, 1.0));
+
+    let mut surfaces = Bvh::builder();
 
     let ground_material = Material::lambertian(Vec3::new(0.5, 0.5, 0.5));
-    objects.add(Sphere::stationary(
+    scene.add(Sphere::stationary(
         Point3::new(0., -1000., 0.),
         1000.,
         ground_material,
@@ -116,18 +122,20 @@ fn one_weekend(aspect_ratio: f64) -> (Scene, Camera) {
                     // glass
                     material = Material::dielectric(1.5);
                 }
-                objects.add(Sphere::stationary(center, 0.2, material));
+                surfaces.add(Sphere::stationary(center, 0.2, material));
             }
         }
     }
     let material1 = Material::lambertian(Vec3::new(0.05, 0.2, 0.6));
-    objects.add(Sphere::stationary(Point3::new(-4., 1., 0.), 1.0, material1));
+    surfaces.add(Sphere::stationary(Point3::new(-4., 1., 0.), 1.0, material1));
     let material2 = Material::dielectric(1.5);
-    objects.add(Sphere::stationary(Point3::new(0., 1., 0.), 1.0, material2));
+    surfaces.add(Sphere::stationary(Point3::new(0., 1., 0.), 1.0, material2));
     let material3 = Material::metal(Vec3::new(0.7, 0.6, 0.5), 0.0);
-    objects.add(Sphere::stationary(Point3::new(4., 1., 0.), 1.0, material3));
+    surfaces.add(Sphere::stationary(Point3::new(4., 1., 0.), 1.0, material3));
 
-    (objects.build(), camera)
+    scene.add(surfaces.build());
+
+    (scene.build(), camera)
 }
 
 /// Create a random scene as shown in the final section of Ray Tracing in One Weekend.
@@ -331,13 +339,7 @@ fn earth(aspect_ratio: f64) -> (Scene, Camera) {
     let mut scene = Scene::builder();
     scene.set_background(Vec3::new(0.7, 0.8, 1.0));
 
-    let texture = match read_image_data("./scenes/res/earth.png") {
-        Ok((image, width, height)) => Texture::image(image.into(), width, height),
-        Err(e) => {
-            eprintln!("could not load earth texture: {}", e);
-            Vec3::new(0.0, 1.0, 1.0).into()
-        }
-    };
+    let texture = earth_texture();
     let material = Material::lambertian(texture);
     let globe = Rotated::new(
         Rotated::new(
@@ -351,6 +353,16 @@ fn earth(aspect_ratio: f64) -> (Scene, Camera) {
     scene.add(globe);
 
     (scene.build(), camera)
+}
+
+fn earth_texture() -> Texture {
+    match read_image_data("./scenes/res/earth.png") {
+        Ok((image, width, height)) => Texture::image(image.into(), width, height),
+        Err(e) => {
+            eprintln!("could not load earth texture: {}", e);
+            Vec3::new(0.0, 1.0, 1.0).into()
+        }
+    }
 }
 
 fn read_image_data(path: &str) -> Result<(Vec<u8>, usize, usize), anyhow::Error> {
@@ -377,4 +389,113 @@ fn read_image_data(path: &str) -> Result<(Vec<u8>, usize, usize), anyhow::Error>
         t => return Err(anyhow!("uncovered color type: {:?}", t)),
     };
     Ok((img_data, info.width as usize, info.height as usize))
+}
+
+fn final_scene(aspect_ratio: f64) -> (Scene, Camera) {
+    let camera = Camera::builder(40.0, aspect_ratio)
+        .from((478.0, 278.0, -600.0))
+        .towards((278.0, 278.0, 0.0))
+        .build();
+
+    let mut rng = rand::thread_rng();
+
+    let mut boxes1 = Vec::new();
+    let ground = Material::lambertian(Vec3::new(0.48, 0.83, 0.53));
+    let boxes_per_side = 20;
+    for i in 0..boxes_per_side {
+        for j in 0..boxes_per_side {
+            let w = 100.0;
+            let x0 = -1000.0 + i as f64 * w;
+            let z0 = -1000.0 + j as f64 * w;
+            let y0 = 0.0;
+            let x1 = x0 + w;
+            let y1 = rng.gen_range(1.0..101.0);
+            let z1 = z0 + w;
+            boxes1.push(
+                make_box(
+                    Point3::new(x0, y0, z0),
+                    Point3::new(x1, y1, z1),
+                    ground.clone(),
+                )
+                .into(),
+            );
+        }
+    }
+
+    let mut scene = Scene::builder();
+    scene.add(Bvh::new(boxes1));
+
+    let light = Material::diffuse_light(Vec3::new(7.0, 7.0, 7.0));
+    scene.add(Quad::new(
+        Point3::new(123.0, 554.0, 147.0),
+        Vec3::new(300.0, 0.0, 0.0),
+        Vec3::new(0.0, 0.0, 265.0),
+        light,
+    ));
+
+    let center1 = Point3::new(400.0, 400.0, 200.0);
+    let center2 = center1 + Vec3::new(30.0, 0.0, 0.0);
+    let sphere_material = Material::lambertian(Vec3::new(0.7, 0.3, 0.1));
+    scene.add(Sphere::moving(center1, center2, 50.0, sphere_material));
+
+    scene.add(Sphere::stationary(
+        Point3::new(260.0, 150.0, 45.0),
+        50.0,
+        Material::dielectric(1.5),
+    ));
+    scene.add(Sphere::stationary(
+        Point3::new(0.0, 150.0, 145.0),
+        50.0,
+        Material::metal(Vec3::new(0.8, 0.8, 0.9), 1.0),
+    ));
+
+    let boundary = Sphere::stationary(
+        Point3::new(360.0, 150.0, 145.0),
+        70.0,
+        Material::dielectric(1.5),
+    );
+    scene.add(boundary.clone());
+    scene.add(ConstantMedium::new(boundary, 0.2, Vec3::new(0.2, 0.4, 0.9)));
+
+    let boundary = Sphere::stationary(
+        Point3::new(0.0, 0.0, 0.0),
+        5000.0,
+        Material::dielectric(1.5),
+    );
+    scene.add(ConstantMedium::new(
+        boundary,
+        0.0001,
+        Vec3::new(1.0, 1.0, 1.0),
+    ));
+
+    let emat = Material::lambertian(earth_texture());
+    scene.add(Sphere::stationary(
+        Point3::new(400.0, 200.0, 400.0),
+        100.0,
+        emat,
+    ));
+    let pertext = Texture::noise(0.1, Arc::new(PerlinNoise::new(&mut rng)));
+    scene.add(Sphere::stationary(
+        Point3::new(220.0, 280.0, 300.0),
+        80.0,
+        Material::lambertian(pertext),
+    ));
+
+    let mut boxes2 = Vec::new();
+    let white = Material::lambertian(Vec3::new(0.73, 0.73, 0.73));
+    let ns = 1000;
+    for _ in 0..ns {
+        let p = Point3::new(
+            rng.gen_range(0.0..165.0),
+            rng.gen_range(0.0..165.0),
+            rng.gen_range(0.0..165.0),
+        );
+        boxes2.push(Sphere::stationary(p, 10.0, white.clone()).into());
+    }
+    scene.add(Translated::new(
+        Rotated::new(Bvh::new(boxes2), Vec3::jhat(), 15f64.to_radians()),
+        Vec3::new(-100.0, 270.0, 395.0),
+    ));
+
+    (scene.build(), camera)
 }

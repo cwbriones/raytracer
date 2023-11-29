@@ -115,7 +115,6 @@ fn main() -> anyhow::Result<()> {
     let _threads = config.threads;
     let image_height = config.height();
     let samples_per_pixel: usize = config.num_samples;
-    let rays = image_width * image_height * samples_per_pixel;
     let max_depth = 40;
 
     let start = Instant::now();
@@ -133,31 +132,58 @@ fn main() -> anyhow::Result<()> {
     let scene = scene.clone();
     let camera = camera.clone();
 
+    // Determine the number of subpixels according to the sampling rate.
+    // Due to stratification, this may not match the target exactly since
+    // we need a perfect square.
+    let sn = (samples_per_pixel as f64).sqrt().floor() as usize;
+    let recip_sn = (sn as f64).recip();
+
     if !config.no_progress {
-        rayon::spawn(move || progress.run(samples_per_pixel));
+        rayon::spawn(move || progress.run(sn));
     }
 
+    // The camera coordinate width of each pixel
+    let pixel_du = 1.0 / image_width as f64;
+    let pixel_dv = 1.0 / image_height as f64;
+
+    // Main render loop.
     buf.par_chunks_mut(3)
         .enumerate()
         .panic_fuse()
-        .for_each(|(idx, pixel)| {
-            let i = idx % image_width;
-            let j = image_height - idx / image_width - 1;
+        .for_each_init(
+            || small_rng(config.seed),
+            |mut rng, (idx, pixel)| {
+                // Pixel coordinates of our image
+                let pi = idx % image_width;
+                let pj = image_height - idx / image_width - 1;
 
-            let mut rng = small_rng(config.seed);
-            let color_vec = average(samples_per_pixel, || {
-                let u = (i as f64 + rng.gen::<f64>()) / (image_width - 1) as f64;
-                let v = (j as f64 + rng.gen::<f64>()) / (image_height - 1) as f64;
-                let ray = camera.get_ray(&mut rng, u, v);
-                scene.ray_color(ray, &mut rng, max_depth)
-            });
-            pixel[0] = (256. * (color_vec.x()).sqrt().clamp(0.0, 0.999)) as u8;
-            pixel[1] = (256. * (color_vec.y()).sqrt().clamp(0.0, 0.999)) as u8;
-            pixel[2] = (256. * (color_vec.z()).sqrt().clamp(0.0, 0.999)) as u8;
-            recorder.record();
-        });
+                // Center of our pixel in camera coordinates
+                let centeru = (pi + 1) as f64 / image_width as f64;
+                let centerv = (pj + 1) as f64 / image_height as f64;
+
+                let ray_colors =
+                    (0..sn)
+                        .flat_map(|si| (0..sn).map(move |sj| (si, sj)))
+                        .map(|(si, sj)| {
+                            // Convert pixel/subpixel coordinates into camera coordinates
+                            // by jittering from the pixel center.
+                            let jitteru = -0.5 + recip_sn * (si as f64 + rng.gen::<f64>());
+                            let jitterv = -0.5 + recip_sn * (sj as f64 + rng.gen::<f64>());
+                            let u = centeru + jitteru * pixel_du;
+                            let v = centerv + jitterv * pixel_dv;
+                            let ray = camera.get_ray(&mut rng, u, v);
+                            scene.ray_color(ray, &mut rng, max_depth)
+                        });
+                let color_vec = average(ray_colors);
+                pixel[0] = (256. * (color_vec.x()).sqrt().clamp(0.0, 0.999)) as u8;
+                pixel[1] = (256. * (color_vec.y()).sqrt().clamp(0.0, 0.999)) as u8;
+                pixel[2] = (256. * (color_vec.z()).sqrt().clamp(0.0, 0.999)) as u8;
+                recorder.record();
+            },
+        );
 
     let elapsed_sec = start.elapsed().as_secs_f64();
+    let rays = image_width * image_height * sn * sn;
     let rays_per_sec = (rays as f64) / elapsed_sec;
     eprintln!("\nDone in {elapsed_sec:.2}s ({rays_per_sec:.0} rays/s)");
 
@@ -178,14 +204,16 @@ fn small_rng(seed: Option<u64>) -> impl Rng {
         .unwrap_or_else(SmallRng::from_entropy)
 }
 
-fn average<T, F>(n: usize, mut f: F) -> T
+fn average<I, T>(iter: I) -> T
 where
-    F: FnMut() -> T,
+    I: Iterator<Item = T>,
     T: Default + ::std::ops::AddAssign + ::std::ops::Div<f64, Output = T>,
 {
     let mut acc = <T as Default>::default();
-    for _ in 0..n {
-        acc += f();
+    let mut count = 0;
+    for item in iter {
+        acc += item;
+        count += 1;
     }
-    acc / (n as f64)
+    acc / (count as f64)
 }

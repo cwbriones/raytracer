@@ -73,7 +73,7 @@ impl Camera {
         }
     }
 
-    pub fn get_ray<R: Rng>(&self, rng: &mut R, s: f64, t: f64) -> Ray {
+    pub fn get_ray<R: Rng>(&self, rng: &mut R, u: f64, v: f64) -> Ray {
         let rd = self.lens_radius * rng.gen_in_unit_disk();
         let offset = self.basis.0 * rd.x() + self.basis.1 * rd.y();
         let offset_origin = self.origin - offset;
@@ -81,7 +81,7 @@ impl Camera {
 
         Ray::new(
             offset_origin,
-            (self.lower_left + s * self.horizontal + t * self.vertical) - offset_origin,
+            (self.lower_left + u * self.horizontal + v * self.vertical) - offset_origin,
             ray_time,
         )
     }

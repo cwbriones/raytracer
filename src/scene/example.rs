@@ -30,6 +30,7 @@ pub enum Example {
     RandomSpheres,
     TwoSpheres,
     TwoPerlinSpheres,
+    Cornell,
     CornellSmoke,
     Earth,
     FinalScene,
@@ -55,6 +56,7 @@ impl FromStr for Example {
             "random-spheres" => Ok(Example::RandomSpheres),
             "two-spheres" => Ok(Example::TwoSpheres),
             "two-perlin" => Ok(Example::TwoPerlinSpheres),
+            "cornell" => Ok(Example::Cornell),
             "cornell-smoke" => Ok(Example::CornellSmoke),
             "earth" => Ok(Example::Earth),
             "final-scene" => Ok(Example::FinalScene),
@@ -70,6 +72,7 @@ impl Example {
             Example::RandomSpheres => random_spheres(aspect_ratio),
             Example::TwoSpheres => two_spheres(aspect_ratio),
             Example::TwoPerlinSpheres => two_perlin_spheres(aspect_ratio),
+            Example::Cornell => cornell(aspect_ratio),
             Example::CornellSmoke => cornell_smoke(aspect_ratio),
             Example::Earth => earth(aspect_ratio),
             Example::FinalScene => final_scene(aspect_ratio),
@@ -254,6 +257,75 @@ fn two_perlin_spheres(aspect_ratio: f64) -> (Scene, Camera) {
     ));
 
     (earth.build(), camera)
+}
+
+fn cornell(aspect_ratio: f64) -> (Scene, Camera) {
+    let camera = Camera::builder(40.0, aspect_ratio)
+        .from((278.0, 278.0, -800.0))
+        .towards((278.0, 278.0, 0.0))
+        .build();
+
+    let red = Material::lambertian(Vec3::new(0.65, 0.05, 0.05));
+    let white = Material::lambertian(Vec3::new(0.73, 0.73, 0.73));
+    let green = Material::lambertian(Vec3::new(0.12, 0.45, 0.15));
+    let light = Material::diffuse_light(Vec3::new(15.0, 15.0, 15.0));
+
+    let mut scene = Scene::builder();
+    scene.add(Quad::new(
+        Point3::new(555.0, 0.0, 0.0),
+        Vec3::new(0.0, 555.0, 0.0),
+        Vec3::new(0.0, 0.0, 555.0),
+        green,
+    ));
+    scene.add(Quad::new(
+        Point3::new(0.0, 0.0, 0.0),
+        Vec3::new(0.0, 555.0, 0.0),
+        Vec3::new(0.0, 0.0, 555.0),
+        red,
+    ));
+    scene.add(Quad::new(
+        Point3::new(343., 554., 332.),
+        Vec3::new(-130.0, 0.0, 0.0),
+        Vec3::new(0.0, 0.0, -105.0),
+        light,
+    ));
+    scene.add(Quad::new(
+        Point3::new(0.0, 555.0, 0.0),
+        Vec3::new(555.0, 0.0, 0.0),
+        Vec3::new(0.0, 0.0, 555.0),
+        white.clone(),
+    ));
+    scene.add(Quad::new(
+        Point3::new(0.0, 0.0, 0.0),
+        Vec3::new(555.0, 0.0, 0.0),
+        Vec3::new(0.0, 0.0, 555.0),
+        white.clone(),
+    ));
+    scene.add(Quad::new(
+        Point3::new(0.0, 0.0, 555.0),
+        Vec3::new(555.0, 0.0, 0.0),
+        Vec3::new(0.0, 555.0, 0.0),
+        white.clone(),
+    ));
+    let box1 = make_box(
+        Point3::new(0.0, 0.001, 0.0),
+        Point3::new(165.0, 333.0, 165.0),
+        white.clone(),
+    );
+    let box1 = Rotated::new(box1, Vec3::jhat(), 15.0f64.to_radians());
+    let box1 = Translated::new(box1, Vec3::new(265.0, 0.0, 295.0));
+    scene.add(box1);
+
+    let box2 = make_box(
+        Point3::new(0.0, 0.001, 0.0),
+        Point3::new(165.0, 165.0, 165.0),
+        white.clone(),
+    );
+    let box2 = Rotated::new(box2, Vec3::jhat(), (-18.0f64).to_radians());
+    let box2 = Translated::new(box2, Vec3::new(130.0, 0.0, 65.0));
+    scene.add(box2);
+
+    (scene.build(), camera)
 }
 
 fn cornell_smoke(aspect_ratio: f64) -> (Scene, Camera) {

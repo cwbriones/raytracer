@@ -96,8 +96,19 @@ pub struct Aabb {
 }
 
 impl Aabb {
-    pub fn new(min: Point3, max: Point3) -> Self {
+    pub const fn new(min: Point3, max: Point3) -> Self {
         Aabb { min, max }
+    }
+
+    // An empty bounding box.
+    //
+    // This box's min corner is at positive infinity, and its max is at
+    // negative infinity.
+    pub const fn empty() -> Self {
+        Aabb::new(
+            Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY),
+            Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
+        )
     }
 
     // Returns a new Aabb with each of its sides being at least
@@ -144,11 +155,20 @@ impl Aabb {
     }
 
     pub fn surface_area(&self) -> f64 {
+        if self.min.x() >= self.max.x()
+            || self.min.y() >= self.max.y()
+            || self.min.z() >= self.max.z()
+        {
+            // empty bounding box
+            return 0.0;
+        }
         let lengths = self.max - self.min;
         2.0 * (lengths.x() * lengths.y() + lengths.y() * lengths.z() + lengths.z() * lengths.x())
     }
 
     pub fn centroid(&self) -> Point3 {
+        // FIXME: This method is the only one that behaves inconsistently
+        // when the bounding box is empty.
         let offset = 0.5 * (self.max - self.min);
         self.min + offset
     }

@@ -130,26 +130,32 @@ struct SAHSplitStrategy;
 
 impl SplitStrategy for SAHSplitStrategy {
     fn split_at(&mut self, surfaces: &[Surface]) -> Option<usize> {
-        // Accumulate boxes from left to right.
-        let mut merge_left = Vec::with_capacity(surfaces.len());
-        merge_left.push(surfaces[0].bounding_box());
-        for s in &surfaces[1..] {
-            let last = merge_left.last().unwrap();
-            let merged = s.bounding_box().merge(last);
-            merge_left.push(merged);
+        if surfaces.len() <= 1 {
+            // Nothing to split
+            return None;
         }
+        let mut merge_left = surfaces
+            .iter()
+            .map(|s| s.bounding_box())
+            .collect::<Vec<_>>();
+        let mut merge_right = merge_left.clone();
+        merge_right.reverse();
 
-        // Accumulate boxes from right to left.
-        let mut merge_right = Vec::with_capacity(surfaces.len());
-        merge_right.push(surfaces.last().unwrap().bounding_box());
-        for s in surfaces.iter().rev().skip(1) {
-            let last = merge_right.last().unwrap();
-            let merged = s.bounding_box().merge(last);
-            merge_right.push(merged);
+        for i in 1..surfaces.len() {
+            // Accumulate boxes from left to right.
+            merge_left[i] = merge_left[i].merge(&merge_left[i - 1]);
+            // Accumulate boxes from right to left.
+            merge_right[i] = merge_right[i].merge(&merge_right[i - 1]);
         }
-        let root_bound = merge_left.last().unwrap();
+        let total_bb = merge_left.last().expect("nonzero number of surfaces");
+        let no_split_cost = total_bb.surface_area() * surfaces.len() as f64 * INTERSECT_COST;
 
-        let (best_split, best_cost) = (1..surfaces.len() - 1)
+        // Iterate over pairs of merge_left / merge_right to compute the cost
+        // if we were to split at that index.
+        //
+        // Return the smallest cost as long as it is less than the cost of not
+        // splitting at all. Otherwise we wil not split.
+        (1..surfaces.len() - 1)
             .map(|split_idx| {
                 // Left box
                 let left = &merge_left[split_idx - 1];
@@ -162,14 +168,8 @@ impl SplitStrategy for SAHSplitStrategy {
                 (split_idx, split_cost)
             })
             .min_by(|(_, costa), (_, costb)| costa.partial_cmp(costb).expect("not NaN"))
-            .unwrap();
-
-        if best_cost >= (root_bound.surface_area() * surfaces.len() as f64 * INTERSECT_COST) {
-            // It's cheaper to make a leaf at this level than it is to split.
-            None
-        } else {
-            Some(best_split)
-        }
+            .filter(|(_, cost)| *cost < no_split_cost)
+            .map(|(split, _)| split)
     }
 }
 
@@ -287,10 +287,10 @@ struct BVHLeafNode {
 
 impl BVHLeafNode {
     fn new(surfaces: Vec<Surface>) -> Self {
-        let mut bound = surfaces[0].bounding_box();
-        for obj in &surfaces[1..] {
-            bound = bound.merge(&obj.bounding_box());
-        }
+        let bound = surfaces
+            .iter()
+            .map(|s| s.bounding_box())
+            .fold(Aabb::empty(), |a, b| a.merge(&b));
         Self {
             surfaces: surfaces.into(),
             bound,
